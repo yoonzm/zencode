@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { Bell, Check, Cpu, FolderGit, GitBranch, Info, Keyboard, Palette, Plug, Rocket, RotateCcw, Sliders, Trash, ListChecks, ChevronLeft, Moon, Sun, Monitor } from "@/lib/icons";
 import type { AppConfig } from "@/data/types";
 import { store, useApp, type Notify, type ThemePref } from "@/store/state";
-import { askConfirm, sync, setPlatformPref, setTheme } from "@/store/actions";
+import { askConfirm, sync, setTheme } from "@/store/actions";
 import { toast } from "@/store/toast";
 import { navigate, useRoute } from "@/lib/route";
 import { useMedia } from "@/lib/hooks";
@@ -98,9 +98,7 @@ function Preview({ right }: { right?: boolean }) {
 
 function General() {
   const theme = useApp((s) => s.theme);
-  const platformPref = useApp((s) => s.platformPref);
   const density = useApp((s) => s.density);
-  const windowControls = useApp((s) => s.windowControls);
   return (
     <div className="space-y-6">
       <section>
@@ -114,12 +112,6 @@ function General() {
       <Group>
         <Row title="列表密度" desc="紧凑模式一屏能看到更多任务。">
           <Segmented label="列表密度" value={density} onChange={(v) => store.set({ density: v })} options={[{ value: "compact", label: "紧凑" }, { value: "comfortable", label: "舒适" }]} />
-        </Row>
-        <Row title="窗口风格" desc="自动时按当前系统选择。桌面应用里会使用系统原生窗口控件。">
-          <Segmented label="窗口风格" value={platformPref} onChange={setPlatformPref} options={[{ value: "auto", label: "自动" }, { value: "mac", label: "macOS" }, { value: "win", label: "Windows" }]} />
-        </Row>
-        <Row title="显示窗口控件" desc="在标题栏里绘制红黄绿或最小化/关闭按钮。">
-          <Toggle label="显示窗口控件" checked={windowControls} onChange={(v) => store.set({ windowControls: v })} />
         </Row>
       </Group>
     </div>

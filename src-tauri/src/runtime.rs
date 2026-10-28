@@ -175,6 +175,11 @@ impl Runtime {
             "load" => {
                 let mut data = self.data.lock().await.clone();
                 data["prefs"] = restore_secrets(&data["prefs"])?;
+                data["platform"] = json!(if cfg!(target_os = "macos") {
+                    "mac"
+                } else {
+                    "win"
+                });
                 Ok(data)
             }
             "save" => {

@@ -1,5 +1,4 @@
 export type Platform = "mac" | "win";
-export type PlatformPref = "auto" | Platform;
 
 export function detectPlatform(): Platform {
   try {
@@ -9,10 +8,6 @@ export function detectPlatform(): Platform {
   } catch {
     return "win";
   }
-}
-
-export function resolvePlatform(pref: PlatformPref): Platform {
-  return pref === "auto" ? detectPlatform() : pref;
 }
 
 const MAC_KEYS: Record<string, string> = { mod: "⌘", shift: "⇧", alt: "⌥", enter: "↵", esc: "Esc", up: "↑", down: "↓", left: "←", right: "→", backspace: "⌫" };

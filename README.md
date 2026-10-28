@@ -20,6 +20,7 @@ npm run package
 
 ## Runtime
 
+- Native OS window decorations provide the window controls. Platform appearance and shortcut labels follow the actual runtime platform; prototype platform overrides are no longer restored.
 - Rust performs HTTP requests, Git operations and the Codex app-server JSON-RPC protocol. There is no bundled Node/Electron server.
 - Windows credentials use Credential Manager; macOS uses Keychain through keyring. Credentials are never saved in renderer localStorage. Linux credential persistence is explicitly unsupported in this release.
 - Task state is saved in the OS application data directory, with a backup on replacement. A damaged state file is reported, not silently reset.
@@ -42,7 +43,7 @@ This is an implementation in validation, not a claim of complete production read
 - `cargo run --no-default-features --example check_codex` is a read-only protocol/account smoke check. In the selected cloud environment the installed CLI exits before initialization because `/home/agent/.codex` is read-only; no real model execution has been asserted. A second check using an empty, isolated writable CLI configuration succeeded in initializing the actual app-server and correctly reported no configured account.
 - All original `src/styles` files remain byte-for-byte unchanged. Visual pixel parity remains unverified: both baseline and current pages were blocked by the environment browser policy. Windows installer launch smoke testing passes in CI; macOS disk images are mounted and verified, but interactive native flows still require a real desktop.
 
-A frontend persistence regression test also verifies that vault failures do not create a toast/save retry loop, explicit retries work, and the saved platform preference is restored.
+A frontend persistence regression test also verifies that vault failures do not create a toast/save retry loop, explicit retries work, and obsolete prototype platform/window-control preferences are ignored.
 
 ## Versioned releases
 

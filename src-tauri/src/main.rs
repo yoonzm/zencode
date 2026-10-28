@@ -14,22 +14,6 @@ async fn desktop_call(
 ) -> Result<Value, String> {
     let args = args.unwrap_or(Value::Null);
     match op.as_str() {
-        "window" => {
-            let w = app.get_webview_window("main").ok_or("窗口不存在")?;
-            match text(&args, "action") {
-                "关闭" => w.close(),
-                "最小化" => w.minimize(),
-                _ => {
-                    if w.is_maximized().map_err(|e| e.to_string())? {
-                        w.unmaximize()
-                    } else {
-                        w.maximize()
-                    }
-                }
-            }
-            .map_err(|e| e.to_string())?;
-            Ok(Value::Null)
-        }
         "attachment" => {
             let path = state.inner().call(&op, args).await?;
             app.opener()

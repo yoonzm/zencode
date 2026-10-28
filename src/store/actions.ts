@@ -1,9 +1,8 @@
-import { store, applyTheme, applyPlatform, EMPTY_FILTERS, type Filters, type ThemePref } from "./state";
+import { store, applyTheme, EMPTY_FILTERS, type Filters, type ThemePref } from "./state";
 import { toast } from "./toast";
 import { getTask, updateTask } from "@/engine/tasks";
 import type { Run, ZTask } from "@/data/types";
 import { sleep, uid } from "@/lib/utils";
-import { resolvePlatform, type PlatformPref } from "@/lib/platform";
 import { navigate } from "@/lib/route";
 import { desktopCall } from "@/lib/desktop";
 import { parsePatch } from "@/lib/diff";
@@ -13,11 +12,6 @@ import { parsePatch } from "@/lib/diff";
 export function setTheme(t: ThemePref) {
   store.set({ theme: t });
   applyTheme(t);
-}
-export function setPlatformPref(p: PlatformPref) {
-  const platform = resolvePlatform(p);
-  store.set({ platformPref: p, platform });
-  applyPlatform(platform);
 }
 export function cycleTheme() {
   const cur = store.get().theme;

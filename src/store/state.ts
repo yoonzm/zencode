@@ -3,7 +3,7 @@ import type { AppConfig, Priority, RunState, ZTask } from "@/data/types";
 import { DEFAULT_CONFIG } from "@/data/defaults";
 import { desktopCall } from "@/lib/desktop";
 import { loadJSON, saveJSON } from "@/lib/utils";
-import { resolvePlatform, type Platform, type PlatformPref } from "@/lib/platform";
+import { detectPlatform, type Platform } from "@/lib/platform";
 
 export type ThemePref = "light" | "dark" | "system";
 export type ListStatus = "ready" | "loading" | "error" | "empty";
@@ -44,9 +44,7 @@ export interface Notify {
 
 export interface Prefs {
   theme: ThemePref;
-  platformPref: PlatformPref;
   density: "comfortable" | "compact";
-  windowControls: boolean;
   sidebarOpen: boolean;
   listWidth: number;
   group: "state" | "none";
@@ -77,9 +75,7 @@ const PREF_KEY = "zencode.prefs.v1";
 
 const defaultPrefs: Prefs = {
   theme: "system",
-  platformPref: "auto",
   density: "compact",
-  windowControls: true,
   sidebarOpen: true,
   listWidth: 448,
   group: "state",
@@ -105,7 +101,7 @@ export const store = createStore<AppState>({
   shortcutsOpen: false,
   toasts: [],
   confirm: null,
-  platform: resolvePlatform(saved.platformPref ?? "auto"),
+  platform: detectPlatform(),
   prefill: null,
   diffFocus: null,
   tab: "run",
@@ -116,13 +112,16 @@ export function useApp<S>(selector: (s: AppState) => S): S {
 }
 
 // ── 持久化 ────────────────────────────────────────────────
-const PERSIST_KEYS: (keyof Prefs)[] = ["theme", "platformPref", "density", "windowControls", "sidebarOpen", "listWidth", "group", "sort", "setupDone", "notify", "config"];
+const PERSIST_KEYS: (keyof Prefs)[] = ["theme", "density", "sidebarOpen", "listWidth", "group", "sort", "setupDone", "notify", "config"];
 let lastPersisted = "";
 let hydrated = false;
 export async function hydrate() {
   const data = await desktopCall("load");
-  store.set({ ...data.prefs, platform: resolvePlatform(data.prefs.platformPref ?? "auto"), tasks: data.tasks, listStatus: data.tasks.length ? "ready" : "empty", syncError: undefined });
-  applyTheme(store.get().theme); applyPlatform(resolvePlatform(store.get().platformPref));
+  // Only supported preferences are restored; obsolete prototype platform overrides are ignored.
+  const prefs = Object.fromEntries(PERSIST_KEYS.filter(k => k in (data.prefs ?? {})).map(k => [k, data.prefs[k]]));
+  const platform: Platform = data.platform === "mac" || data.platform === "win" ? data.platform : detectPlatform();
+  store.set({ ...prefs, platform, tasks: data.tasks, listStatus: data.tasks.length ? "ready" : "empty", syncError: undefined });
+  applyTheme(store.get().theme); applyPlatform(platform);
   localStorage.removeItem(PREF_KEY);
   hydrated = true;
 }

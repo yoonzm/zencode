@@ -1,60 +1,21 @@
-import { desktopCall } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
 import { Command, Moon, PanelLeft, PanelLeftClose, Search, Settings, Sun, Monitor } from "@/lib/icons";
 import { useApp } from "@/store/state";
 import { cycleTheme, setPalette, toggleSidebar } from "@/store/actions";
-import { toast } from "@/store/toast";
 import { navigate, useRoute } from "@/lib/route";
 import { useMedia } from "@/lib/hooks";
 import { Tip } from "@/components/ui/tooltip";
 import { Kbd } from "@/components/ui/kbd";
 import { Logo } from "@/components/logo";
 
-function windowAction(action: string) {
-  desktopCall("window", { action }).catch(e => toast({ title: "窗口操作失败", desc: e.message, tone: "danger" }));
-}
-
-function MacLights() {
-  return (
-    <div className="no-drag group/lights flex items-center gap-2 pl-3.5 pr-2" aria-hidden>
-      {[
-        ["bg-danger", "关闭"],
-        ["bg-warning", "最小化"],
-        ["bg-success", "缩放"],
-      ].map(([c, l]) => (
-        <button key={l} tabIndex={-1} onClick={() => windowAction(l)} className={cn("size-3 rounded-full opacity-90 ring-1 ring-inset ring-foreground/15 transition-opacity hover:opacity-100", c)} aria-label={l} />
-      ))}
-    </div>
-  );
-}
-
-function WinControls() {
-  const base = "grid h-full w-[46px] place-items-center text-foreground transition-colors";
-  return (
-    <div className="no-drag flex h-full items-stretch" aria-hidden>
-      <button tabIndex={-1} onClick={() => windowAction("最小化")} className={cn(base, "hover:bg-hover")} aria-label="最小化">
-        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5.5h10" stroke="currentColor" strokeWidth="1" /></svg>
-      </button>
-      <button tabIndex={-1} onClick={() => windowAction("最大化")} className={cn(base, "hover:bg-hover")} aria-label="最大化">
-        <svg width="10" height="10" viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9" fill="none" stroke="currentColor" strokeWidth="1" rx="1" /></svg>
-      </button>
-      <button tabIndex={-1} onClick={() => windowAction("关闭")} className={cn(base, "hover:bg-danger hover:text-white")} aria-label="关闭">
-        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M.5.5l9 9M9.5.5l-9 9" stroke="currentColor" strokeWidth="1" /></svg>
-      </button>
-    </div>
-  );
-}
-
 export function TitleBar() {
   const platform = useApp((s) => s.platform);
   const sidebarOpen = useApp((s) => s.sidebarOpen);
-  const showControls = useApp((s) => s.windowControls);
   const theme = useApp((s) => s.theme);
   const tasks = useApp((s) => s.tasks);
   const route = useRoute();
   const roomy = useMedia("(min-width: 700px)");
   const mac = platform === "mac";
-  const controls = showControls && roomy;
 
   let title = "任务";
   if (route.name === "task") {
@@ -67,8 +28,7 @@ export function TitleBar() {
 
   return (
     <header className={cn("drag-region app-chrome relative z-30 flex shrink-0 items-center bg-surface", mac ? "h-11" : "h-9")}>
-      {controls && mac && <MacLights />}
-      <div className={cn("no-drag flex items-center gap-1", !(controls && mac) && "pl-2")}>
+      <div className="no-drag flex items-center gap-1 pl-2">
         {!mac && <Logo size={16} className="mx-1.5 text-foreground" />}
         <Tip label={sidebarOpen ? "收起侧边栏" : "展开侧边栏"} keys={["mod", "B"]}>
           <button
@@ -113,7 +73,6 @@ export function TitleBar() {
           </button>
         </Tip>
       </div>
-      {controls && !mac && <WinControls />}
     </header>
   );
 }
