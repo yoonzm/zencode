@@ -21,6 +21,7 @@ jobs:
             target: x86_64-apple-darwin
             bundles: dmg
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -49,6 +50,7 @@ jobs:
           test -x "$mount/ZenCode.app/Contents/MacOS/zencode"
           hdiutil detach "$mount"
       - name: Install and launch Windows package
+        timeout-minutes: 5
         if: runner.os == 'Windows'
         shell: pwsh
         run: |

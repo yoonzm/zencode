@@ -608,6 +608,17 @@ impl Runtime {
                     }
                     break;
                 }
+                "item/started" => {
+                    let item = &p["item"];
+                    let activity = match text(item, "type") {
+                        "commandExecution" => format!("运行 {}", text(item, "command")),
+                        "fileChange" => "修改文件".into(),
+                        "agentMessage" => "整理回复".into(),
+                        _ => "分析问题".into(),
+                    };
+                    self.update(id, |t| t["run"]["activity"] = json!(activity))
+                        .await?;
+                }
                 "item/agentMessage/delta" => {
                     let event = format!("message-{}", text(p, "itemId"));
                     self.update(id, |t| {

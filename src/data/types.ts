@@ -74,30 +74,6 @@ export interface DiffFile {
   hunks: Hunk[];
 }
 
-// ── 脚本（模拟 Codex 的执行过程） ─────────────────────────
-
-export interface ScriptStep {
-  ev: EventBody;
-  /** 发出该事件前等待的毫秒数（模拟耗时） */
-  delay: number;
-  /** 关联到 script.patches 中的某个文件 */
-  patch?: string;
-  /** 仅在审批通过时执行 */
-  onlyIfApproved?: boolean;
-  /** 执行到这一步后切换状态 */
-  endState?: RunState;
-}
-
-export interface Script {
-  id: string;
-  branch: string;
-  steps: ScriptStep[];
-  patches: Record<string, { path: string; status: "modified" | "added"; patch: string }>;
-  /** 失败脚本：重试时使用的后续步骤 */
-  retry?: ScriptStep[];
-  end: RunState;
-}
-
 export interface Run {
   state: RunState;
   branch?: string;
@@ -106,12 +82,7 @@ export interface Run {
   finishedAt?: number;
   events: RunEvent[];
   files: DiffFile[];
-  /** 尚未执行的步骤 */
-  queue: ScriptStep[];
-  scriptId: string;
-  patchKeys: Record<string, { path: string; status: "modified" | "added"; patch: string }>;
-  end: RunState;
-  retry?: ScriptStep[];
+  activity?: string;
   mr?: { iid: number; url: string };
   mrBusy?: boolean;
   viewed: string[];

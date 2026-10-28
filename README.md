@@ -4,6 +4,8 @@ Tauri 2 + Rust desktop application, retaining the React / TypeScript / Tailwind 
 
 ## Development
 
+The macOS build requires macOS 13.3+ to match the existing UI’s Safari 16.4 CSS target.
+
 Install Node.js 24, stable Rust, Git, and [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/). Install and log into the official Codex CLI separately (`codex login`). ZenCode uses the CLI's existing account and default model; the three model choices select low/medium/high reasoning effort.
 
 ```

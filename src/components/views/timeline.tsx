@@ -208,17 +208,7 @@ const Event = memo(function Event({ e, task, last, latest }: { e: RunEvent; task
 });
 
 function activity(task: ZTask): string {
-  const q = task.run.queue[0];
-  if (!q) return "收尾";
-  switch (q.ev.kind) {
-    case "read": return "阅读代码";
-    case "edit": return `修改 ${q.ev.path.split("/").pop()}`;
-    case "command": return `运行 ${q.ev.cmd.split(" ").slice(0, 3).join(" ")}`;
-    case "plan": return "更新计划";
-    case "test": return "核对测试结果";
-    case "approval": return "准备请求权限";
-    default: return "分析问题";
-  }
+  return task.run.activity || "分析问题";
 }
 
 export function Timeline({ task }: { task: ZTask }) {
