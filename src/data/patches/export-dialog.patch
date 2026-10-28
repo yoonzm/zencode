@@ -1,0 +1,40 @@
+@@ -0,0 +1,38 @@
++import { useState } from "react";
++import { Dialog } from "@/components/ui/dialog";
++import { Checkbox } from "@/components/ui/checkbox";
++import { Button } from "@/components/ui/button";
++import { ORDER_COLUMNS, type OrderColumnKey } from "../exportColumns";
++
++interface Props {
++  open: boolean;
++  initial: OrderColumnKey[];
++  onClose: () => void;
++  onConfirm: (columns: OrderColumnKey[]) => void;
++}
++
++export function ExportTemplateDialog({ open, initial, onClose, onConfirm }: Props) {
++  const [selected, setSelected] = useState<Set<OrderColumnKey>>(new Set(initial));
++
++  function toggle(key: OrderColumnKey) {
++    setSelected((prev) => {
++      const next = new Set(prev);
++      next.has(key) ? next.delete(key) : next.add(key);
++      return next;
++    });
++  }
++
++  return (
++    <Dialog open={open} onClose={onClose} title="自定义导出列">
++      <ul className="grid grid-cols-2 gap-2">
++        {ORDER_COLUMNS.map((c) => (
++          <li key={c.key}>
++            <Checkbox checked={selected.has(c.key)} onChange={() => toggle(c.key)} label={c.label} />
++          </li>
++        ))}
++      </ul>
++      <Button disabled={selected.size === 0} onClick={() => onConfirm([...selected])}>
++        保存为模板并导出
++      </Button>
++    </Dialog>
++  );
++}

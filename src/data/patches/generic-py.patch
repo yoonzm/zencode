@@ -1,0 +1,14 @@
+@@ -31,10 +31,16 @@ class {{Mod}}Handler:
+     def handle(self, request: Request) -> Response:
+-        limit = self.limiter.check(request.client_id)
+-        if limit.exceeded:
+-            return Response(status=429)
++        limit = self.limiter.check(request.client_id)
++        if limit.exceeded:
++            return Response(
++                status=429,
++                headers={"Retry-After": str(max(1, int(limit.reset_in)))},
++                body={"error": "rate_limited"},
++            )
+
+         return self.next_handler.handle(request)

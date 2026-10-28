@@ -1,0 +1,32 @@
+@@ -1,14 +1,30 @@
+ const FALLBACK = "/";
+
+-export function getRedirect(search: string): string {
+-  const params = new URLSearchParams(search);
+-  const raw = params.get("redirect");
+-  return raw ? decodeURIComponent(raw) : FALLBACK;
+-}
++/**
++ * 只允许站内相对路径，防止开放重定向。
++ * URLSearchParams 已经解码过一次，这里不能再 decodeURIComponent。
++ */
++export function safeRedirect(raw: string | null | undefined): string {
++  if (!raw) return FALLBACK;
++  try {
++    const url = new URL(raw, window.location.origin);
++    if (url.origin !== window.location.origin) return FALLBACK;
++    const target = url.pathname + url.search + url.hash;
++    return target.startsWith("/") && !target.startsWith("//") ? target : FALLBACK;
++  } catch {
++    return FALLBACK;
++  }
++}
++
++export function getRedirect(search: string): string {
++  return safeRedirect(new URLSearchParams(search).get("redirect"));
++}
+
+ export function buildLoginUrl(from: string): string {
+-  return `/login?redirect=${encodeURIComponent(encodeURIComponent(from))}`;
++  return `/login?redirect=${encodeURIComponent(from)}`;
+ }

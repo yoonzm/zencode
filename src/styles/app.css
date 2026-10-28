@@ -1,0 +1,237 @@
+@import "tailwindcss";
+
+/* ───────────────────────────────────────────────────────────────
+   ZenCode 设计令牌
+   概念：墨与蓝染。中性色带一点纸张的暖，强调色是靛蓝（藍染），
+   只用于“正在发生/已选中/可操作”。状态色独立于强调色。
+   ─────────────────────────────────────────────────────────────── */
+
+:root, .theme-light {
+  --background:#fcfcfa;
+  --surface:#f3f3ef;          /* 侧边栏、标题栏 */
+  --surface-2:#eeeeea;
+  --card:#ffffff;
+  --popover:#ffffff;
+  --muted:#ecece7;
+  --hover:#1b1c1910;
+  --active:#1b1c1918;
+  --foreground:#1b1c19;
+  --muted-foreground:#5b5d54;
+  --subtle-foreground:#85877d;
+  --border:#e4e4dd;
+  --border-strong:#d0d0c7;
+  --ring:#3552a8;
+  --primary:#1b1c19;
+  --primary-foreground:#fcfcfa;
+  --accent:#3552a8;
+  --accent-foreground:#ffffff;
+  --accent-soft:#e9edf8;
+  --success:#1d7a4b;
+  --warning:#92560a;
+  --danger:#c0392b;
+  --diff-add-bg:#e8f5ed;
+  --diff-add-gutter:#cdebd9;
+  --diff-del-bg:#fcebe8;
+  --diff-del-gutter:#f6cfc9;
+  --syn-keyword:#7b3fb0;
+  --syn-string:#17724a;
+  --syn-number:#a85200;
+  --syn-comment:#777970;
+  --syn-fn:#2a5cb5;
+  --syn-type:#0c6f87;
+  --syn-attr:#92560a;
+  --scroll-thumb:#1b1c1926;
+  --av-bg-l:0.92;
+  --av-fg-l:0.38;
+  --elev-pop:0 10px 36px #1b1c1918,0 0 0 1px #d0d0c7;
+  --elev-sm:0 1px 2px #1b1c190f;
+  --scrim:#1b1c1952;
+  color-scheme: light;
+
+  --app-font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue","Segoe UI","Microsoft YaHei UI","Noto Sans SC",system-ui,sans-serif;
+  --app-mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,"Cascadia Mono",Consolas,"Sarasa Mono SC","PingFang SC",monospace;
+  --radius:10px;
+}
+
+/*@DARK_MEDIA@*/
+/*@DARK_ATTR@*/
+/*@DARK_SCOPE@*/
+
+/* Windows：系统字体顺序、圆角与滚动条习惯不同 */
+html[data-platform="win"] {
+  --app-font:"Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI","PingFang SC","Noto Sans SC",system-ui,sans-serif;
+  --app-mono:"Cascadia Mono",Consolas,ui-monospace,"Microsoft YaHei UI",monospace;
+  --radius:7px;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-card: var(--card);
+  --color-popover: var(--popover);
+  --color-muted: var(--muted);
+  --color-hover: var(--hover);
+  --color-active: var(--active);
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-diff-add-bg: var(--diff-add-bg);
+  --color-diff-add-gutter: var(--diff-add-gutter);
+  --color-diff-del-bg: var(--diff-del-bg);
+  --color-diff-del-gutter: var(--diff-del-gutter);
+  --color-scrim: var(--scrim);
+
+  --font-sans: var(--app-font);
+  --font-mono: var(--app-mono);
+
+  --radius-xs: 4px;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+
+  --shadow-pop: var(--elev-pop);
+  --shadow-sm: var(--elev-sm);
+
+  --text-xs: 0.71875rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.375rem;
+  --text-lg: 1rem;
+  --text-lg--line-height: 1.5rem;
+  --text-xl: 1.1875rem;
+  --text-xl--line-height: 1.625rem;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 2rem;
+
+  --ease-out-soft: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+html, body { height: 100%; }
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--app-font);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+#root { height: 100%; }
+
+/* 原生感：应用外壳默认不可选中文本、按钮用默认光标 */
+.app-chrome { user-select: none; -webkit-user-select: none; }
+.selectable, .selectable * { user-select: text; -webkit-user-select: text; }
+@layer base {
+  button, [role="button"], [role="option"], [role="tab"], summary { cursor: default; }
+  button { font: inherit; color: inherit; }
+}
+@layer base { a { cursor: pointer; } }
+.drag-region { -webkit-app-region: drag; app-region: drag; }
+.no-drag { -webkit-app-region: no-drag; app-region: no-drag; }
+
+@layer base {
+  :focus { outline: none; }
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; border-radius: 4px; }
+  input:focus-visible, textarea:focus-visible { outline: none; }
+}
+
+::selection { background: color-mix(in oklab, var(--accent) 28%, transparent); }
+
+/* 滚动条：macOS 贴近 overlay，Windows 细而可见 */
+* { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 10px; border: 3px solid transparent; background-clip: content-box; }
+html[data-platform="win"] *::-webkit-scrollbar-thumb { border-width: 2px; border-radius: 4px; }
+
+/* 头像：色相由内联变量 --h 提供，亮度来自主题令牌 */
+.avatar {
+  background: oklch(var(--av-bg-l) 0.07 var(--h));
+  color: oklch(var(--av-fg-l) 0.09 var(--h));
+}
+
+/* 语法高亮（highlight.js 类名 → 语义令牌） */
+.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-doctag, .hljs-meta .hljs-keyword { color: var(--syn-keyword); }
+.hljs-string, .hljs-regexp, .hljs-template-string, .hljs-addition { color: var(--syn-string); }
+.hljs-number, .hljs-symbol, .hljs-bullet { color: var(--syn-number); }
+.hljs-comment, .hljs-quote { color: var(--syn-comment); font-style: italic; }
+.hljs-title, .hljs-title.function_, .hljs-function .hljs-title { color: var(--syn-fn); }
+.hljs-type, .hljs-title.class_, .hljs-built_in, .hljs-class .hljs-title { color: var(--syn-type); }
+.hljs-attr, .hljs-attribute, .hljs-variable, .hljs-property, .hljs-name, .hljs-tag { color: var(--syn-attr); }
+.hljs-meta { color: var(--syn-comment); }
+
+/* ── 动画（克制：短、轻、可关闭） ── */
+@keyframes zc-fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes zc-rise { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
+@keyframes zc-pop { from { opacity: 0; transform: scale(.97) } to { opacity: 1; transform: none } }
+@keyframes zc-pulse { 0%,100% { opacity: 1; transform: scale(1) } 50% { opacity: .45; transform: scale(.78) } }
+@keyframes zc-shimmer { from { background-position: 120% 0 } to { background-position: -120% 0 } }
+@keyframes zc-sweep { from { transform: translateX(-100%) } to { transform: translateX(100%) } }
+@keyframes zc-beam { to { --beam-angle: 360deg } }
+@property --beam-angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+
+.anim-fade { animation: zc-fade .16s var(--ease-out-soft) both; }
+.anim-rise { animation: zc-rise .22s var(--ease-out-soft) both; }
+.anim-pop { animation: zc-pop .16s var(--ease-out-soft) both; }
+.dot-pulse { animation: zc-pulse 2.2s ease-in-out infinite; }
+
+.shimmer-text {
+  color: transparent;
+  background-image: linear-gradient(100deg, var(--muted-foreground) 35%, var(--foreground) 50%, var(--muted-foreground) 65%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text; background-clip: text;
+  animation: zc-shimmer 2.8s linear infinite;
+}
+.skeleton {
+  position: relative; overflow: hidden; background: var(--muted); border-radius: 6px;
+}
+.skeleton::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, var(--hover), transparent);
+  animation: zc-sweep 1.5s ease-in-out infinite;
+}
+
+/* 边缘光束：仅在 Codex 执行中、输入框周围，低对比 */
+.beam { position: relative; isolation: isolate; }
+.beam::before {
+  content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; z-index: -1;
+  background: conic-gradient(from var(--beam-angle), transparent 0 70%, var(--accent) 88%, transparent 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: zc-beam 5s linear infinite; opacity: .75;
+}
+
+.dot-pattern {
+  background-image: radial-gradient(var(--border-strong) 1px, transparent 1px);
+  background-size: 16px 16px;
+  mask-image: radial-gradient(ellipse 60% 55% at 50% 45%, #000 20%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 60% 55% at 50% 45%, #000 20%, transparent 75%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+  .beam::before { display: none; }
+}

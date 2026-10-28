@@ -1,0 +1,28 @@
+{
+  "name": "zencode-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@floating-ui/react": "*",
+    "@headlessui/react": "*",
+    "class-variance-authority": "*",
+    "clsx": "*",
+    "highlight.js": "*",
+    "react": "*",
+    "react-dom": "*",
+    "react-icons": "*",
+    "tailwind-merge": "*"
+  },
+  "devDependencies": {
+    "@types/react": "*",
+    "@types/react-dom": "*",
+    "esbuild": "*",
+    "tailwindcss": "^4",
+    "typescript": "*"
+  }
+}

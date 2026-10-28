@@ -1,0 +1,33 @@
+@@ -0,0 +1,33 @@
++import { beforeEach, describe, expect, it } from "vitest";
++import { buildLoginUrl, getRedirect, safeRedirect } from "./redirect";
++
++beforeEach(() => {
++  window.history.replaceState({}, "", "/");
++});
++
++describe("safeRedirect", () => {
++  it("保留站内相对路径，包括查询参数", () => {
++    expect(safeRedirect("/orders?page=3&status=paid")).toBe("/orders?page=3&status=paid");
++  });
++
++  it("拒绝外部域名", () => {
++    expect(safeRedirect("https://evil.example.com/steal")).toBe("/");
++  });
++
++  it("拒绝协议相对地址", () => {
++    expect(safeRedirect("//evil.example.com")).toBe("/");
++  });
++
++  it("空值回到首页", () => {
++    expect(safeRedirect(null)).toBe("/");
++  });
++});
++
++describe("登录往返", () => {
++  it("带查询参数的地址经过登录页后不丢失", () => {
++    const url = buildLoginUrl("/orders?page=3&status=paid");
++    const search = url.slice(url.indexOf("?"));
++    expect(getRedirect(search)).toBe("/orders?page=3&status=paid");
++  });
++});

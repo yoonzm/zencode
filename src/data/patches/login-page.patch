@@ -1,0 +1,20 @@
+@@ -1,7 +1,6 @@
+ import { useNavigate, useLocation } from "react-router-dom";
+ import { useAuth } from "@/auth/useAuth";
+-import { decodeQuery } from "@/lib/query";
+ import { getRedirect } from "@/auth/redirect";
+ import { LoginForm } from "./LoginForm";
+
+ export function LoginPage() {
+@@ -22,9 +21,9 @@ export function LoginPage() {
+   const { search } = useLocation();
+
+   async function onSubmit(values: LoginValues) {
+     await auth.login(values);
+-    const to = decodeURIComponent(getRedirect(search));
+-    navigate(to || "/", { replace: true });
++    const to = getRedirect(search);
++    navigate(to, { replace: true });
+   }
+
+   return <LoginForm onSubmit={onSubmit} />;
