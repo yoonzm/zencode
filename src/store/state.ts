@@ -121,14 +121,18 @@ let lastPersisted = "";
 let hydrated = false;
 export async function hydrate() {
   const data = await desktopCall("load");
-  store.set({ ...data.prefs, tasks: data.tasks, listStatus: "ready" });
+  store.set({ ...data.prefs, platform: resolvePlatform(data.prefs.platformPref ?? "auto"), tasks: data.tasks, listStatus: "ready" });
   applyTheme(store.get().theme); applyPlatform(resolvePlatform(store.get().platformPref));
   localStorage.removeItem(PREF_KEY);
   hydrated = true;
 }
 let saveQueue: Promise<unknown> = Promise.resolve();
-export function flushPrefs(): Promise<unknown> { return saveQueue; }
-store.subscribe(() => {
+let saveFailed = false;
+export function flushPrefs(): Promise<unknown> {
+  if (saveFailed) { lastPersisted = ""; persistCurrent(); }
+  return saveQueue;
+}
+function persistCurrent() {
   if (!hydrated) return;
   const s = store.get();
   const slim: Record<string, unknown> = {};
@@ -136,10 +140,12 @@ store.subscribe(() => {
   const json = JSON.stringify(slim);
   if (json !== lastPersisted) {
     lastPersisted = json;
+    saveFailed = false;
     saveQueue = saveQueue.catch(() => {}).then(() => desktopCall("save", JSON.parse(json)));
-    saveQueue.catch(e => { lastPersisted = ""; window.dispatchEvent(new CustomEvent("desktop-error", { detail: String(e) })); });
+    saveQueue.catch(e => { saveFailed = true; window.dispatchEvent(new CustomEvent("desktop-error", { detail: String(e) })); });
   }
-});
+}
+store.subscribe(persistCurrent);
 
 // ── 主题与平台 ────────────────────────────────────────────
 // 宿主（Artifact 查看器）可能自己设置了 data-theme；「跟随系统」时恢复它。

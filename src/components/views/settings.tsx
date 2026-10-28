@@ -261,7 +261,7 @@ function Advanced() {
                   confirmLabel: "清除并重新加载",
                   danger: true,
                   onConfirm: () => {
-                    void desktopCall("clearPrefs").then(() => { location.hash = "#setup"; location.reload(); }).catch(e => toast({ title: "清除失败", desc: String(e), tone: "danger" }));
+                    void flushPrefs().catch(() => {}).then(() => desktopCall("clearPrefs")).then(() => { location.hash = "#setup"; location.reload(); }).catch(e => toast({ title: "清除失败", desc: String(e), tone: "danger" }));
                   },
                 })
               }
