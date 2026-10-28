@@ -67,6 +67,7 @@ async fn writeback_retry_preserves_existing_mr_and_verifies_history() {
         if route.starts_with("/api/v4/projects/"){return (200,json!({"id":9,"path_with_namespace":"team/app"}));}
         if route=="/api.php/v1/comments"{let n=count.fetch_add(1,Ordering::SeqCst);return if n==0{(500,json!({"error":"temporary"}))}else{(200,json!({"id":5}))};}
         if route=="/api.php/v1/bugs/1"{return (200,json!({"id":1,"actions":if count.load(Ordering::SeqCst)>1{json!([{"comment":format!("ZenCode MR: {link}")}])}else{json!([])}}));}
+        if route.starts_with("/api.php/v2/actions/comment"){return (404,json!({}));}
         panic!("Unexpected request: {route}");
     })).await;
     let dir = tempfile::tempdir().unwrap();
@@ -107,4 +108,23 @@ async fn writeback_retry_preserves_existing_mr_and_verifies_history() {
         "done"
     );
     assert_eq!(comments.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn modern_comment_does_not_mutate_task_status() {
+    let base = server(Arc::new(|route, request| {
+        assert_eq!(
+            route,
+            "/api.php/v2/actions/comment?objectType=bug&objectID=7"
+        );
+        assert!(request.contains("ZenCode MR:"));
+        assert!(!request.contains("resolution"));
+        assert!(!request.contains("closedReason"));
+        (200, json!({"status":"success","data":42}))
+    }))
+    .await;
+    let api = Api::new(&base, "/api.php/v1", "Token", "test").unwrap();
+    api.comment("bug", 7, "https://example.test/mr/1")
+        .await
+        .unwrap();
 }

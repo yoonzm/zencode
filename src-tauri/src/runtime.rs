@@ -799,7 +799,12 @@ impl Runtime {
         let link = text(&t["run"]["mr"], "url");
         let before = zt.request(&route, "GET", None).await?;
         if !before["actions"].to_string().contains(link) {
-            zt.request("/comments","POST",Some(json!({"objectType":t["kind"],"objectID":t["no"],"comment":format!("ZenCode MR: {link}")}))).await?;
+            zt.comment(
+                text(&t, "kind"),
+                t["no"].as_u64().ok_or("缺少禅道编号")?,
+                link,
+            )
+            .await?;
             let verified = zt.request(&route, "GET", None).await?;
             if !verified["actions"].to_string().contains(link) {
                 return Err("MR 已创建，但未能在禅道历史中验证回写链接。请核对此版本 comments API，任务仍保留待审核。".into());

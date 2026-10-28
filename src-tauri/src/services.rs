@@ -150,6 +150,35 @@ impl Api {
             .await
             .map_err(|e| format!("服务返回无效 JSON: {}", e.without_url()))
     }
+    /// Modern ZenTao maps /actions/comment to action::comment without changing object state.
+    /// Only an absent/unsupported endpoint permits the legacy v1 fallback; auth/server failures do not.
+    pub async fn comment(&self, kind: &str, id: u64, link: &str) -> Result<()> {
+        if !["bug", "story"].contains(&kind) {
+            return Err("不支持的评论对象".into());
+        }
+        let mut v2 = self.clone();
+        v2.base = format!(
+            "{}/api.php/v2",
+            self.base
+                .strip_suffix("/api.php/v1")
+                .ok_or("无效禅道 API 路径")?
+        );
+        let result = v2
+            .request(
+                &format!("/actions/comment?objectType={kind}&objectID={id}"),
+                "POST",
+                Some(json!({"comment":format!("ZenCode MR: {link}")})),
+            )
+            .await;
+        match result {
+            Ok(_) => Ok(()),
+            Err(e) if e.contains("HTTP 404") || e.contains("HTTP 405") => {
+                self.request("/comments","POST",Some(json!({"objectType":kind,"objectID":id,"comment":format!("ZenCode MR: {link}")}))).await?;
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
+    }
     pub async fn download(&self, route: &str) -> Result<Vec<u8>> {
         let mut response = self
             .client
