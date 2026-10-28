@@ -1,0 +1,24 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {build} from 'esbuild';
+
+test('real sync drives loading, empty, failure and recovery without simulation actions',async()=>{
+ const attrs=new Map();
+ globalThis.document={documentElement:{getAttribute:k=>attrs.get(k),setAttribute:(k,v)=>attrs.set(k,v),removeAttribute:k=>attrs.delete(k)}};
+ globalThis.window={matchMedia:()=>({matches:false})};
+ globalThis.location={hash:''};
+ let resolveSync,rejectSync;
+ window.desktop={call:()=>new Promise((resolve,reject)=>{resolveSync=resolve;rejectSync=reject;})};
+ const bundled=await build({stdin:{contents:'export * from "./src/store/actions"; export {store} from "./src/store/state";',resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'browser',alias:{'@':`${process.cwd()}/src`},define:{'process.env.NODE_ENV':'"production"'}});
+ const actions=await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`);
+ assert.equal(actions.setListStatus,undefined);assert.equal(actions.resetDemo,undefined);
+ const {store,sync}=actions;
+ const first=sync();assert.equal(store.get().listStatus,'loading');assert.equal(store.get().syncing,true);
+ resolveSync([]);await first;assert.equal(store.get().listStatus,'empty');assert.equal(store.get().syncing,false);
+ const failed=sync();rejectSync(Error('HTTP 401'));await failed;
+ assert.equal(store.get().listStatus,'error');assert.equal(store.get().syncError,'HTTP 401');
+ const retry=sync();resolveSync([{id:'bug-1',description:[],run:{}}]);await retry;
+ assert.equal(store.get().listStatus,'ready');assert.equal(store.get().syncError,undefined);assert.equal(store.get().tasks.length,1);
+ for(const file of ['settings','palette']) assert.doesNotMatch(readFileSync(`src/components/views/${file}.tsx`,'utf8'),/状态模拟|setListStatus|resetDemo/);
+});

@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { ChevronsUpDown, FolderGit, Inbox, RefreshCw, Search, Sparkles, User, CircleCheck, GitPullRequest, RotateCcw, Rocket } from "@/lib/icons";
 import { useApp } from "@/store/state";
 import { PRESETS, activePreset, filterTasks, presetFilters } from "@/store/select";
-import { resetDemo, setFilters, setPalette, sync } from "@/store/actions";
+import { setFilters, setPalette, sync } from "@/store/actions";
 import { store } from "@/store/state";
 import { navigate, useRoute } from "@/lib/route";
 import { Logo } from "@/components/logo";
@@ -85,7 +85,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             { label: "立即同步禅道", icon: RefreshCw, onClick: () => sync() },
             { label: "重新运行配置向导", icon: Rocket, onClick: () => navigate({ name: "setup" }) },
             { separator: true },
-            { label: "重新同步数据", icon: RotateCcw, onClick: resetDemo },
+            { label: "重新同步数据", icon: RotateCcw, onClick: () => sync() },
           ]}
         />
       </div>

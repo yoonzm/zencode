@@ -158,6 +158,7 @@ export function TaskListPane({ className }: { className?: string }) {
   const tasks = useApp((s) => s.tasks);
   const filters = useApp((s) => s.filters);
   const status = useApp((s) => s.listStatus);
+  const syncError = useApp((s) => s.syncError);
   const syncing = useApp((s) => s.syncing);
   const lastSync = useApp((s) => s.lastSync);
   const group = useApp((s) => s.group);
@@ -230,7 +231,7 @@ export function TaskListPane({ className }: { className?: string }) {
         title="无法连接禅道"
         desc={
           <>
-            请求 <code className="font-mono text-xs">{config.zentao.baseUrl.replace(/^https?:\/\//, "")}/api.php/v1/bugs</code> 超时（ETIMEDOUT）。请检查网络或 VPN，并确认禅道地址和 Token 仍然有效。上次成功同步在 {relTime(lastSync, now)}。
+            {syncError || "同步未完成，请检查连接设置后重试。"}
           </>
         }
         actions={

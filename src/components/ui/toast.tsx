@@ -32,7 +32,6 @@ function ToastItem({ t }: { t: Toast }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <p className="text-sm font-medium leading-5 text-foreground">{t.title}</p>
-          {t.sim && <span className="shrink-0 rounded-[4px] bg-muted px-1 text-[10px] font-medium leading-4 text-muted-foreground">模拟</span>}
         </div>
         {t.desc && <p className="mt-0.5 text-xs leading-4 text-muted-foreground">{t.desc}</p>}
         {t.action && (

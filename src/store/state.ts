@@ -23,7 +23,6 @@ export interface Toast {
   title: string;
   desc?: string;
   tone: "success" | "info" | "warn" | "danger";
-  sim?: boolean;
   action?: { label: string; run: () => void };
   duration: number;
 }
@@ -61,6 +60,7 @@ export interface AppState extends Prefs {
   tasks: ZTask[];
   filters: Filters;
   listStatus: ListStatus;
+  syncError?: string;
   syncing: boolean;
   lastSync: number;
   paletteOpen: boolean;
@@ -121,7 +121,7 @@ let lastPersisted = "";
 let hydrated = false;
 export async function hydrate() {
   const data = await desktopCall("load");
-  store.set({ ...data.prefs, platform: resolvePlatform(data.prefs.platformPref ?? "auto"), tasks: data.tasks, listStatus: "ready" });
+  store.set({ ...data.prefs, platform: resolvePlatform(data.prefs.platformPref ?? "auto"), tasks: data.tasks, listStatus: data.tasks.length ? "ready" : "empty", syncError: undefined });
   applyTheme(store.get().theme); applyPlatform(resolvePlatform(store.get().platformPref));
   localStorage.removeItem(PREF_KEY);
   hydrated = true;

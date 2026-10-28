@@ -1,4 +1,4 @@
-import { store, applyTheme, applyPlatform, EMPTY_FILTERS, type Filters, type ThemePref, type ListStatus } from "./state";
+import { store, applyTheme, applyPlatform, EMPTY_FILTERS, type Filters, type ThemePref } from "./state";
 import { toast } from "./toast";
 import { getTask, updateTask } from "@/engine/tasks";
 import type { Run, ZTask } from "@/data/types";
@@ -47,18 +47,13 @@ export function setFilters(patch: Partial<Filters>) {
 export function resetFilters() {
   store.set({ filters: EMPTY_FILTERS });
 }
-export function setListStatus(status: ListStatus) {
-  store.set({ listStatus: status });
-}
-
 export async function sync() {
   if (store.get().syncing) return;
-  store.set({ syncing: true });
-  try { const tasks = await desktopCall("sync", { config: store.get().config }); store.set({ tasks: tasks.map(decodeTask), lastSync: Date.now(), listStatus: "ready" }); }
-  catch (e) { report(e); store.set({ listStatus: "error" }); }
+  store.set({ syncing: true, syncError: undefined, ...(store.get().tasks.length === 0 ? { listStatus: "loading" as const } : {}) });
+  try { const tasks = await desktopCall("sync", { config: store.get().config }); store.set({ tasks: tasks.map(decodeTask), lastSync: Date.now(), listStatus: tasks.length ? "ready" : "empty" }); }
+  catch (e) { report(e); store.set({ listStatus: "error", syncError: e instanceof Error ? e.message : String(e) }); }
   finally { store.set({ syncing: false }); }
 }
-export function resetDemo() { void sync(); }
 function report(e: unknown) { toast({ title: "操作未完成", desc: e instanceof Error ? e.message : String(e), tone: "danger", duration: 8000 }); }
 function runCall(op: string, args: object) { return desktopCall(op, { ...args, config: store.get().config }).catch(report); }
 export function startRun(id: string, instruction?: string, ref?: string) { void runCall("start", { id, instruction: [ref, instruction].filter(Boolean).join("\n") }); }

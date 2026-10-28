@@ -1,11 +1,11 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogBackdrop, DialogPanel } from "@headlessui/react";
 import { cn } from "@/lib/utils";
-import { ArrowRight, Bug, Command as CommandIcon, CornerDownLeft, GitBranch, GitPullRequest, Inbox, Keyboard, ListFilter, Monitor, Moon, PanelLeft, Pause, Play, RefreshCw, RotateCcw, Rocket, Search, Settings, Sun, WifiOff, Wand, Eye, Code, Lightbulb, User, Sparkles, Loader, CircleCheck } from "@/lib/icons";
+import { ArrowRight, Bug, Command as CommandIcon, CornerDownLeft, GitBranch, GitPullRequest, Inbox, Keyboard, ListFilter, Monitor, Moon, PanelLeft, Pause, Play, RefreshCw, RotateCcw, Rocket, Search, Settings, Sun, Eye, Code, Lightbulb, User, Sparkles, Loader } from "@/lib/icons";
 import { useApp, store } from "@/store/state";
 import { useRoute, navigate } from "@/lib/route";
 import { fuzzy } from "@/lib/fuzzy";
-import { setPalette, setShortcuts, setTheme, setFilters, resetFilters, sync, toggleSidebar, setListStatus, resetDemo, startRun, pauseRun, resumeRun, createMr, retryRun, setTab, openTask } from "@/store/actions";
+import { setPalette, setShortcuts, setTheme, setFilters, resetFilters, sync, toggleSidebar, startRun, pauseRun, resumeRun, createMr, retryRun, setTab, openTask } from "@/store/actions";
 import { EMPTY_FILTERS } from "@/store/state";
 import { copyText } from "@/lib/clipboard";
 import { Kbd } from "@/components/ui/kbd";
@@ -103,11 +103,6 @@ export function CommandPalette() {
       { id: "f-active", group: "筛选", title: "只看执行中", icon: Sparkles, run: done(() => { setFilters({ states: ["running", "queued", "waiting", "paused"] }); navigate({ name: "tasks" }); }) },
       { id: "f-review", group: "筛选", title: "只看待审核", icon: GitPullRequest, run: done(() => { setFilters({ states: ["review"] }); navigate({ name: "tasks" }); }) },
       { id: "f-clear", group: "筛选", title: "清除全部筛选", icon: ListFilter, run: done(() => resetFilters()) },
-      { id: "s-fail", group: "状态模拟", title: "模拟：禅道同步失败", hint: "查看错误状态", icon: WifiOff, keywords: "错误 error", run: done(() => { navigate({ name: "tasks" }); setListStatus("error"); }) },
-      { id: "s-empty", group: "状态模拟", title: "模拟：没有任务", hint: "查看空状态", icon: Inbox, keywords: "空 empty", run: done(() => { navigate({ name: "tasks" }); setListStatus("empty"); }) },
-      { id: "s-load", group: "状态模拟", title: "模拟：列表加载中", hint: "查看骨架屏", icon: Loader, keywords: "加载 loading", run: done(() => { navigate({ name: "tasks" }); setListStatus("loading"); setTimeout(() => setListStatus("ready"), 2600); }) },
-      { id: "s-ok", group: "状态模拟", title: "恢复正常列表", icon: CircleCheck, run: done(() => { setListStatus("ready"); }) },
-      { id: "s-reset", group: "状态模拟", title: "重新同步数据", icon: Wand, run: done(resetDemo) },
       { id: "p-zt", group: "设置", title: "禅道连接", icon: Settings, run: done(() => navigate({ name: "prefs", section: "zentao" })) },
       { id: "p-gl", group: "设置", title: "GitLab 连接", icon: Settings, run: done(() => navigate({ name: "prefs", section: "gitlab" })) },
       { id: "p-cx", group: "设置", title: "Codex 与权限", icon: Settings, run: done(() => navigate({ name: "prefs", section: "codex" })) },
@@ -135,8 +130,7 @@ export function CommandPalette() {
       const ctx = cmds.filter((c) => c.group === "当前任务").slice(0, 6);
       const base = cmds.filter((c) => ["g-sync", "g-settings", "t-dark", "g-keys"].includes(c.id));
       const recent = cmds.filter((c) => c.group === "任务").slice(0, 4);
-      const sim = cmds.filter((c) => c.group === "状态模拟").slice(0, 3);
-      return [...ctx, ...base, ...recent, ...sim].map((c) => ({ c, idx: [] as number[], score: 0 }));
+      return [...ctx, ...base, ...recent].map((c) => ({ c, idx: [] as number[], score: 0 }));
     }
     const out: { c: Cmd; idx: number[]; score: number }[] = [];
     for (const c of cmds) {

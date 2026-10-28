@@ -4,8 +4,8 @@ import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Bell, Check, Cpu, FolderGit, GitBranch, Info, Keyboard, Palette, Plug, Rocket, RotateCcw, Sliders, Trash, ListChecks, ChevronLeft, Moon, Sun, Monitor } from "@/lib/icons";
 import type { AppConfig } from "@/data/types";
-import { store, useApp, type ListStatus, type Notify, type ThemePref } from "@/store/state";
-import { askConfirm, resetDemo, setListStatus, setPlatformPref, setTheme } from "@/store/actions";
+import { store, useApp, type Notify, type ThemePref } from "@/store/state";
+import { askConfirm, sync, setPlatformPref, setTheme } from "@/store/actions";
 import { toast } from "@/store/toast";
 import { navigate, useRoute } from "@/lib/route";
 import { useMedia } from "@/lib/hooks";
@@ -233,23 +233,12 @@ function Shortcuts() {
 }
 
 function Advanced() {
-  const status = useApp((s) => s.listStatus);
-  const opts: { value: ListStatus; label: string }[] = [
-    { value: "ready", label: "正常" }, { value: "loading", label: "加载中" }, { value: "empty", label: "为空" }, { value: "error", label: "出错" },
-  ];
   return (
     <div className="space-y-6">
       <section>
-        <h3 className="mb-1 text-sm font-medium text-foreground">状态模拟</h3>
-        <p className="mb-2 text-xs leading-5 text-muted-foreground">切换任务列表的显示状态，方便查看加载、空和错误界面。</p>
-        <Group>
-          <Row title="任务列表状态"><Segmented label="任务列表状态" value={status} onChange={(v) => { setListStatus(v); navigate({ name: "tasks" }); }} options={opts} /></Row>
-        </Group>
-      </section>
-      <section>
         <h3 className="mb-2 text-sm font-medium text-foreground">数据</h3>
         <Group>
-          <Row title="重新同步数据" desc="重新从禅道读取任务，保留本地执行记录。"><Button onClick={resetDemo}><RotateCcw />重置</Button></Row>
+          <Row title="重新同步数据" desc="重新从禅道读取任务，保留本地执行记录。"><Button onClick={() => void sync()}><RotateCcw />同步</Button></Row>
           <Row title="重新运行配置向导" desc="从头走一遍首次配置流程。"><Button onClick={() => navigate({ name: "setup" })}><Rocket />打开向导</Button></Row>
           <Row title="清除本地设置" desc="删除本机配置与钥匙串凭据，保留任务工作区。">
             <Button
