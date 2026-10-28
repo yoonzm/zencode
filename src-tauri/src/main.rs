@@ -97,6 +97,13 @@ fn main() {
             )
             .map_err(std::io::Error::other)?;
             app.manage(rt);
+            tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
+                .on_navigation(|url| {
+                    url.scheme() == "tauri"
+                        || (["http", "https"].contains(&url.scheme())
+                            && url.host_str() == Some("tauri.localhost"))
+                })
+                .build()?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![desktop_call])

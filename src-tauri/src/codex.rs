@@ -36,6 +36,8 @@ impl Session {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
+        #[cfg(unix)]
+        cmd.process_group(0);
         let mut child = cmd.spawn().map_err(|e| format!("启动 Codex 失败：{e}"))?;
         let input = child.stdin.take().ok_or("无法写入 Codex")?;
         let stdout = child.stdout.take().ok_or("无法读取 Codex")?;
@@ -122,6 +124,22 @@ impl Session {
         Ok(v)
     }
     pub async fn close(&self) {
-        let _ = self.child.lock().await.kill().await;
+        let mut child = self.child.lock().await;
+        if let Some(pid) = child.id() {
+            #[cfg(unix)]
+            unsafe {
+                libc::kill(-(pid as i32), libc::SIGTERM);
+            }
+            #[cfg(windows)]
+            {
+                let _ = crate::services::command(
+                    "taskkill",
+                    &["/pid", &pid.to_string(), "/T", "/F"],
+                    None,
+                )
+                .await;
+            }
+        }
+        let _ = child.kill().await;
     }
 }

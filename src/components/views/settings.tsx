@@ -281,7 +281,7 @@ function About() {
       <Logo size={36} className="text-foreground" />
       <div>
         <p className="text-lg font-semibold text-foreground">ZenCode</p>
-        <p className="text-sm text-muted-foreground">版本 0.1.0 · 界面原型</p>
+        <p className="text-sm text-muted-foreground">版本 0.1.0 · 桌面应用</p>
       </div>
       <p className="max-w-md text-sm leading-6 text-muted-foreground">
         ZenCode 通过本机 Codex CLI 处理禅道任务，并在审核后推送 GitLab MR。当前版本的兼容范围与限制见项目 README。

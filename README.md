@@ -37,5 +37,5 @@ This is an implementation in validation, not a claim of complete production read
 
 - TypeScript typecheck and production UI build pass.
 - Eight Rust tests pass: URL validation, task identity normalization, GitLab remote validation, state persistence, HTTP pagination/authentication, task synchronization/attachments, crash recovery, and a Git-backed app-server fixture covering approval/pause/resume/diff.
-- `cargo run --no-default-features --example check_codex` is a read-only protocol/account smoke check. In the selected cloud environment the installed CLI exits before initialization because `/home/agent/.codex` is read-only; no real model execution has been asserted.
+- `cargo run --no-default-features --example check_codex` is a read-only protocol/account smoke check. In the selected cloud environment the installed CLI exits before initialization because `/home/agent/.codex` is read-only; no real model execution has been asserted. A second check using an empty, isolated writable CLI configuration succeeded in initializing the actual app-server and correctly reported no configured account.
 - All original `src/styles` files remain byte-for-byte unchanged. Visual pixel parity and native interactive smoke tests are still pending.
