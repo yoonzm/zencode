@@ -256,6 +256,16 @@ fn name(v: &Value) -> String {
 fn date(v: &Value) -> i64 {
     if let Some(date) = v
         .as_str()
+        .and_then(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
+    {
+        return date
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc()
+            .timestamp_millis();
+    }
+    if let Some(date) = v
+        .as_str()
         .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
     {
         return date.timestamp_millis();
@@ -276,12 +286,15 @@ pub fn task(
         .as_u64()
         .or_else(|| row["id"].as_str()?.parse().ok())
         .ok_or("无效禅道任务 ID")?;
+    if text(row, "title").is_empty() {
+        return Err("禅道返回了无标题的任务，无法同步".into());
+    }
     let assignee = row["assignedTo"]["account"]
         .as_str()
         .or_else(|| row["assignedTo"].as_str())
         .unwrap_or("");
     Ok(
-        json!({"id":format!("{kind}-{id}"),"no":id,"kind":kind,"title":row["title"],"priority":row["pri"].as_u64().unwrap_or(3).clamp(1,4),"severity":row["severity"],"ztStatus":row["status"],"product":product["name"],"module":name(&row["module"]),"moduleKey":name(&row["module"]),"sprint":name(&row["execution"]),"assignee":if assignee==account {"me".into()}else{name(&row["assignedTo"])},"reporter":name(&row["openedBy"]),"createdAt":date(&row["openedDate"]),"updatedAt":date(&row["lastEditedDate"]),"repoId":text(mapping,"repo"),"labels":[],"description":[{"type":"p","text":row["steps"].as_str().or_else(||row["spec"].as_str()).unwrap_or("")}],"attachments":attachments(row),"history":history(row),"run":empty_run()}),
+        json!({"id":format!("{kind}-{id}"),"no":id,"kind":kind,"title":row["title"],"priority":row["pri"].as_u64().unwrap_or(3).clamp(1,4),"severity":row["severity"],"ztStatus":row["status"],"product":product["name"],"module":row["moduleTitle"].as_str().map(str::to_owned).unwrap_or_else(||name(&row["module"])),"moduleKey":name(&row["module"]),"sprint":name(&row["execution"]),"assignee":if assignee==account {"me".into()}else{name(&row["assignedTo"])},"reporter":name(&row["openedBy"]),"createdAt":date(&row["openedDate"]),"updatedAt":date(&row["lastEditedDate"]),"deadline":if text(row,"deadline").is_empty()||text(row,"deadline")=="0000-00-00"{Value::Null}else{json!(date(&row["deadline"]))},"repoId":text(mapping,"repo"),"labels":[],"description":[{"type":"p","text":row["steps"].as_str().or_else(||row["spec"].as_str()).unwrap_or("")}],"attachments":attachments(row),"history":history(row),"run":empty_run()}),
     )
 }
 fn values(v: &Value) -> Vec<&Value> {

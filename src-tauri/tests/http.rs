@@ -51,3 +51,60 @@ async fn paginate_and_reject_http_auth_failure() {
     assert!(error.contains("401"));
     assert!(!error.contains("must-not-leak"));
 }
+
+#[tokio::test]
+async fn writeback_retry_preserves_existing_mr_and_verifies_history() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use zencode_core::{
+        runtime::Runtime,
+        services::{command, empty_run},
+        storage::Storage,
+    };
+    let comments = Arc::new(AtomicUsize::new(0));
+    let count = comments.clone();
+    let link = "https://gitlab.example/team/app/-/merge_requests/4";
+    let base=server(Arc::new(move|route,_request|{
+        if route.starts_with("/api/v4/projects/"){return (200,json!({"id":9,"path_with_namespace":"team/app"}));}
+        if route=="/api.php/v1/comments"{let n=count.fetch_add(1,Ordering::SeqCst);return if n==0{(500,json!({"error":"temporary"}))}else{(200,json!({"id":5}))};}
+        if route=="/api.php/v1/bugs/1"{return (200,json!({"id":1,"actions":if count.load(Ordering::SeqCst)>1{json!([{"comment":format!("ZenCode MR: {link}")}])}else{json!([])}}));}
+        panic!("Unexpected request: {route}");
+    })).await;
+    let dir = tempfile::tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    std::fs::create_dir(&repo).unwrap();
+    command("git", &["init", "-b", "main"], Some(&repo))
+        .await
+        .unwrap();
+    command(
+        "git",
+        &["remote", "add", "origin", &format!("{base}/team/app.git")],
+        Some(&repo),
+    )
+    .await
+    .unwrap();
+    let mut run = empty_run();
+    run["state"] = json!("review");
+    run["worktree"] = json!(repo);
+    run["mr"] = json!({"iid":4,"url":link});
+    run["mapping"] = json!({"repo":"team/app","branch":"main"});
+    let data = dir.path().join("data");
+    Storage::new(&data).save(&json!({"prefs":{},"tasks":[{"id":"bug-1","no":1,"kind":"bug","title":"Fix","run":run}]})).unwrap();
+    let runtime = Runtime::new(data, Arc::new(|_, _| {})).unwrap();
+    let args = json!({"id":"bug-1","config":{"gitlab":{"baseUrl":base,"token":"test-pat"},"zentao":{"baseUrl":base,"auth":"token","secret":"test-token"}}});
+    assert!(runtime
+        .call("mr", args.clone())
+        .await
+        .unwrap_err()
+        .contains("500"));
+    assert_eq!(
+        runtime.data.lock().await["tasks"][0]["run"]["state"],
+        "review"
+    );
+    assert_eq!(runtime.data.lock().await["tasks"][0]["run"]["mr"]["iid"], 4);
+    runtime.call("mr", args).await.unwrap();
+    assert_eq!(
+        runtime.data.lock().await["tasks"][0]["run"]["state"],
+        "done"
+    );
+    assert_eq!(comments.load(Ordering::SeqCst), 2);
+}
