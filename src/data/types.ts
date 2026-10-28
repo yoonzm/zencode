@@ -27,6 +27,7 @@ export interface DescBlock {
 }
 
 export interface Attachment {
+  id?: number;
   name: string;
   size: string;
 }

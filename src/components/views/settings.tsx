@@ -1,3 +1,5 @@
+import { flushPrefs } from "@/store/state";
+import { desktopCall } from "@/lib/desktop";
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Bell, Check, Cpu, FolderGit, GitBranch, Info, Keyboard, Palette, Plug, Rocket, RotateCcw, Sliders, Trash, ListChecks, ChevronLeft, Moon, Sun, Monitor } from "@/lib/icons";
@@ -134,9 +136,9 @@ function useDraft<K extends "zentao" | "gitlab" | "codex">(key: K) {
     patch: (p: Partial<AppConfig[K]>) => setDraft((d) => ({ ...d, ...p })),
     set: setDraft,
     revert: () => setDraft(saved),
-    save: () => {
+    save: async () => {
       store.set((s) => ({ config: { ...s.config, [key]: draft } }));
-      toast({ title: "设置已保存", desc: "保存在本机；凭据由操作系统加密", sim: true });
+      try { await flushPrefs(); toast({ title: "设置已保存", desc: "保存在本机；凭据由操作系统加密" }); } catch { /* 保存错误由全局处理 */ }
     },
   };
 }
@@ -187,10 +189,10 @@ function ReposSection() {
       <SaveBar
         dirty={dirty}
         onRevert={() => { setDraft(saved); setShowErrors(false); }}
-        onSave={() => {
+        onSave={async () => {
           if (!valid) { setShowErrors(true); toast({ title: "有映射没有填写完整", desc: "请补全红色标出的字段后再保存。", tone: "warn" }); return; }
           store.set((s) => ({ config: { ...s.config, mappings: draft } }));
-          toast({ title: "仓库映射已保存", sim: true });
+          try { await flushPrefs(); toast({ title: "仓库映射已保存" }); } catch { /* 保存错误由全局处理 */ }
         }}
       />
     </>
@@ -249,7 +251,7 @@ function Advanced() {
         <Group>
           <Row title="重新同步数据" desc="重新从禅道读取任务，保留本地执行记录。"><Button onClick={resetDemo}><RotateCcw />重置</Button></Row>
           <Row title="重新运行配置向导" desc="从头走一遍首次配置流程。"><Button onClick={() => navigate({ name: "setup" })}><Rocket />打开向导</Button></Row>
-          <Row title="清除本地设置" desc="删除保存在浏览器里的主题、配置和偏好，并回到首次配置。">
+          <Row title="清除本地设置" desc="删除本机配置与钥匙串凭据，保留任务工作区。">
             <Button
               variant="danger-ghost"
               onClick={() =>
@@ -259,9 +261,7 @@ function Advanced() {
                   confirmLabel: "清除并重新加载",
                   danger: true,
                   onConfirm: () => {
-                    try { localStorage.removeItem("zencode.prefs.v1"); } catch { /* 忽略 */ }
-                    location.hash = "#setup";
-                    location.reload();
+                    void desktopCall("clearPrefs").then(() => { location.hash = "#setup"; location.reload(); }).catch(e => toast({ title: "清除失败", desc: String(e), tone: "danger" }));
                   },
                 })
               }

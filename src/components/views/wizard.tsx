@@ -1,3 +1,4 @@
+import { flushPrefs } from "@/store/state";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, ArrowRight, Check, CircleAlert, Lock, Rocket, Minus } from "@/lib/icons";
@@ -61,11 +62,12 @@ export function Wizard() {
     go(i + 1);
   };
 
-  const finish = () => {
+  const finish = async () => {
     store.set({ config: { ...draft }, setupDone: true });
+    try { await flushPrefs(); } catch { return; }
     navigate({ name: "tasks" });
     sync();
-    toast({ title: "配置完成", desc: "正在从禅道同步任务", tone: "success", sim: true });
+    toast({ title: "配置完成", desc: "正在从禅道同步任务", tone: "success" });
   };
 
   const exitDemo = () => {
@@ -178,7 +180,7 @@ export function Wizard() {
                 onChange={(p) => { patch("zentao", p); zt.reset(); }}
                 test={zt.state}
                 onTest={() => testZ()}
-                onDemo={() => { setDraft((d) => ({ ...d, zentao: demoZ })); testZ(demoZ); }}
+
               />
             )}
             {step.id === "gitlab" && (
@@ -187,7 +189,7 @@ export function Wizard() {
                 onChange={(p) => { patch("gitlab", p); gl.reset(); }}
                 test={gl.state}
                 onTest={() => testG()}
-                onDemo={() => { setDraft((d) => ({ ...d, gitlab: demoG })); testG(demoG); }}
+
               />
             )}
             {step.id === "codex" && (
@@ -196,7 +198,7 @@ export function Wizard() {
                 onChange={(p) => { patch("codex", p); if ("sandbox" in p || "model" in p || "concurrency" in p) return; cx.reset(); }}
                 test={cx.state}
                 onTest={() => testC()}
-                onDemo={() => { setDraft((d) => ({ ...d, codex: demoC })); testC(demoC); }}
+
               />
             )}
             {step.id === "repos" && (
@@ -207,7 +209,7 @@ export function Wizard() {
                     {draft.mappings.length === 0 ? "至少添加一个仓库映射。" : `还有 ${invalidCount} 个映射没有填写完整。`}
                   </p>
                 )}
-                <RepoMappingEditor value={draft.mappings} onChange={(mappings) => setDraft((d) => ({ ...d, mappings }))} showErrors={showErrors} />
+                <RepoMappingEditor config={draft} value={draft.mappings} onChange={(mappings) => setDraft((d) => ({ ...d, mappings }))} showErrors={showErrors} />
               </div>
             )}
 

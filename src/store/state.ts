@@ -126,6 +126,8 @@ export async function hydrate() {
   localStorage.removeItem(PREF_KEY);
   hydrated = true;
 }
+let saveQueue: Promise<unknown> = Promise.resolve();
+export function flushPrefs(): Promise<unknown> { return saveQueue; }
 store.subscribe(() => {
   if (!hydrated) return;
   const s = store.get();
@@ -134,7 +136,8 @@ store.subscribe(() => {
   const json = JSON.stringify(slim);
   if (json !== lastPersisted) {
     lastPersisted = json;
-    desktopCall("save", slim).catch(e => window.dispatchEvent(new CustomEvent("desktop-error", { detail: e.message })));
+    saveQueue = saveQueue.catch(() => {}).then(() => desktopCall("save", JSON.parse(json)));
+    saveQueue.catch(e => { lastPersisted = ""; window.dispatchEvent(new CustomEvent("desktop-error", { detail: String(e) })); });
   }
 });
 

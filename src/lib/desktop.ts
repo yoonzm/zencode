@@ -11,7 +11,7 @@ if ('__TAURI_INTERNALS__' in window) {
     return () => { stopped = true; promise.then(off => off()); };
   };
   window.desktop = {
-    call: (op, args) => invoke('desktop_call', { op, args }),
+    call: (op, args) => invoke('desktop_call', { op, args }).catch(error => { throw new Error(String(error)); }),
     onTask: fn => subscribe('desktop:task', fn),
     onError: fn => subscribe('desktop:error', fn),
   };

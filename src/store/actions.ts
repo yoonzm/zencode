@@ -1,6 +1,6 @@
 import { store, applyTheme, applyPlatform, EMPTY_FILTERS, type Filters, type ThemePref, type ListStatus } from "./state";
 import { toast } from "./toast";
-import { getTask, schedule, updateTask, taskLabel } from "@/engine/sim";
+import { getTask, updateTask } from "@/engine/tasks";
 import type { Run, ZTask } from "@/data/types";
 import { sleep, uid } from "@/lib/utils";
 import { resolvePlatform, type PlatformPref } from "@/lib/platform";
@@ -8,7 +8,6 @@ import { navigate } from "@/lib/route";
 import { desktopCall } from "@/lib/desktop";
 import { parsePatch } from "@/lib/diff";
 
-const simNote = "演示数据 · 未连接真实服务";
 
 // ── 偏好 ─────────────────────────────────────────────────
 export function setTheme(t: ThemePref) {
@@ -72,12 +71,14 @@ export function sendInstruction(id: string, text: string, ref?: string) { startR
 export function createMr(id: string) { return runCall("mr", { id }); }
 export function openExternal(url: string) { void desktopCall("open", { url }).catch(report); }
 export function decodeTask(t: ZTask): ZTask {
+  t.description = t.description.map(b => b.text ? { ...b, text: new DOMParser().parseFromString(b.text, "text/html").body.textContent || "" } : b);
   const raw = (t.run as any).rawDiff as string | undefined;
   if (raw) t.run.files = raw.split(/^diff --git /m).slice(1).map(part => {
     const lines = part.split("\n");
     const plus = lines.find(l => l.startsWith("+++ b/"));
     const minus = lines.find(l => l.startsWith("--- a/"));
-    const path = (plus || minus || "").slice(6);
+    const header = lines[0];
+    const path = plus || minus ? (plus || minus)!.slice(6).replace(/\t.*$/, "") : header.slice(header.lastIndexOf(" b/") + 3);
     return parsePatch(path, part.includes("new file mode") ? "added" : "modified", part);
   });
   return t;

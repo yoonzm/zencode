@@ -1,7 +1,9 @@
+import { desktopCall } from "@/lib/desktop";
+import { store } from "@/store/state";
 import { Paperclip } from "@/lib/icons";
 import type { ZTask } from "@/data/types";
 import { PRIORITY_LABEL } from "@/data/types";
-import { personName } from "@/data/mock";
+import { personName } from "@/data/identity";
 import { fmtDate, relTime } from "@/lib/time";
 import { Avatar } from "@/components/ui/status";
 import { toast } from "@/store/toast";
@@ -64,7 +66,7 @@ export function ZentaoTab({ task }: { task: ZTask }) {
                 {task.attachments.map((a) => (
                   <li key={a.name}>
                     <button
-                      onClick={() => toast({ title: "演示数据没有真实附件", desc: "正式版会通过禅道接口下载到本地缓存后打开。", tone: "info" })}
+                      onClick={() => void desktopCall("attachment", { id: task.id, fileId: a.id, config: store.get().config }).then(() => toast({ title: "附件已下载", desc: "已在文件管理器中定位。" })).catch(e => toast({ title: "附件下载失败", desc: String(e), tone: "danger" }))}
                       className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-left text-sm outline-none hover:bg-hover focus-visible:ring-2 focus-visible:ring-ring/60"
                     >
                       <Paperclip className="size-3.5 text-muted-foreground" />

@@ -1,6 +1,7 @@
+import { store } from "@/store/state";
 import { useState, useEffect } from "react";
 import { Plus, Trash, Wand, FolderGit } from "@/lib/icons";
-import type { RepoMapping } from "@/data/types";
+import type { RepoMapping, AppConfig } from "@/data/types";
 import { desktopCall } from "@/lib/desktop";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/fields";
@@ -17,7 +18,7 @@ export function mappingErrors(m: RepoMapping) {
 }
 export const mappingsValid = (list: RepoMapping[]) => list.length > 0 && list.every((m) => !Object.values(mappingErrors(m)).some(Boolean));
 
-export function RepoMappingEditor({ value, onChange, showErrors }: { value: RepoMapping[]; onChange: (v: RepoMapping[]) => void; showErrors?: boolean }) {
+export function RepoMappingEditor({ value, onChange, showErrors, config }: { value: RepoMapping[]; onChange: (v: RepoMapping[]) => void; showErrors?: boolean; config?: AppConfig }) {
   const [products, setProducts] = useState<string[]>(value.map(m => m.product));
   useEffect(() => { desktopCall("products").then(setProducts).catch(() => {}); }, []);
   const [matching, setMatching] = useState(false);
@@ -25,8 +26,14 @@ export function RepoMappingEditor({ value, onChange, showErrors }: { value: Repo
   const used = new Set(value.map((m) => m.product));
 
   const autoMatch = async () => {
-    try { const names = await desktopCall("products"); setProducts(names); toast({ title: "已读取禅道产品", desc: "请手动指定 GitLab 仓库及本地克隆路径，避免匹配到错误仓库。", tone: "info" }); }
-    catch (e) { toast({ title: "读取失败", desc: String(e), tone: "danger" }); }
+    setMatching(true);
+    try {
+      const matched = await desktopCall("matchRepos", { config: config || store.get().config }) as RepoMapping[];
+      const next = value.map(m => { const match = matched.find(x => x.product === m.product); return match && !m.repo.trim() ? { ...m, repo: match.repo, branch: m.branch || match.branch } : m; });
+      onChange([...next, ...matched.filter(m => !used.has(m.product))]);
+      toast({ title: `匹配到 ${matched.length} 个同名 GitLab 项目`, desc: "请填写或核对本地克隆路径；名称不唯一的项目需要手动选择。", tone: "info" });
+    } catch (e) { toast({ title: "匹配失败", desc: String(e), tone: "danger" }); }
+    finally { setMatching(false); }
   };
 
   const add = () =>

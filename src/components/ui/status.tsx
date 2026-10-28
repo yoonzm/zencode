@@ -1,7 +1,7 @@
 import { cn, hueOf } from "@/lib/utils";
 import { Bug, CircleAlert, CircleCheck, CircleDashed, CircleDot, CirclePause, CircleX, Clock, Lightbulb, Loader } from "@/lib/icons";
 import { STATE_LABEL, type Priority, type RunState, type TaskKind } from "@/data/types";
-import { PEOPLE } from "@/data/mock";
+import { personName } from "@/data/identity";
 
 export const STATE_TONE: Record<RunState, string> = {
   idle: "text-subtle-foreground",
@@ -86,8 +86,7 @@ export function PriorityIcon({ p, className }: { p: Priority; className?: string
 }
 
 export function Avatar({ id, size = 20, className }: { id: string; size?: number; className?: string }) {
-  const p = PEOPLE.find((x) => x.id === id);
-  const name = p?.name ?? id;
+  const name = personName(id);
   return (
     <span
       className={cn("avatar inline-grid shrink-0 place-items-center rounded-full font-medium leading-none", className)}

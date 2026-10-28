@@ -1,7 +1,7 @@
 import type { RunState, ZTask } from "@/data/types";
 import type { Filters } from "./state";
 import { EMPTY_FILTERS } from "./state";
-import { ME } from "@/data/mock";
+import { ME } from "@/data/identity";
 import { fuzzy } from "@/lib/fuzzy";
 
 export const GROUP_ORDER: RunState[] = ["waiting", "failed", "review", "running", "paused", "queued", "idle", "done"];

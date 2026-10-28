@@ -85,7 +85,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             { label: "立即同步禅道", icon: RefreshCw, onClick: () => sync() },
             { label: "重新运行配置向导", icon: Rocket, onClick: () => navigate({ name: "setup" }) },
             { separator: true },
-            { label: "重置演示数据", icon: RotateCcw, onClick: resetDemo },
+            { label: "重新同步数据", icon: RotateCcw, onClick: resetDemo },
           ]}
         />
       </div>

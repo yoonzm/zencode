@@ -31,4 +31,11 @@ npm run package
 
 The `Desktop installers` GitHub Actions workflow builds Windows x64 NSIS `.exe`, macOS Apple Silicon `.dmg`, and macOS Intel `.dmg`. Artifacts are private workflow downloads, not public releases. Signing/notarization credentials are not configured.
 
-This is an implementation in validation, not a claim of complete production readiness. Live ZenTao/GitLab integration, native Windows/macOS smoke testing, and credential-vault roundtrips require those systems/accounts. The current API adapter does not yet download attachments or support legacy ZenTao APIs. Unsupported Codex interaction requests fail explicitly. No external test tenant is included, and no successful remote mutation is fabricated. See test output and workflow artifacts for verified results.
+This is an implementation in validation, not a claim of complete production readiness. Live ZenTao/GitLab integration, native Windows/macOS smoke testing, and credential-vault roundtrips require those systems/accounts. Attachment downloads require a binary REST v1 file response (up to 50 MB); incompatible preview/JSON responses report an error. Legacy ZenTao APIs are not supported. The comments endpoint is followed by a readback check; servers without a working comments endpoint keep the task in review with its MR link. Unsupported Codex interaction requests fail explicitly. No external test tenant is included, and no successful remote mutation is fabricated. See test output and workflow artifacts for verified results.
+
+## Verified locally
+
+- TypeScript typecheck and production UI build pass.
+- Eight Rust tests pass: URL validation, task identity normalization, GitLab remote validation, state persistence, HTTP pagination/authentication, task synchronization/attachments, crash recovery, and a Git-backed app-server fixture covering approval/pause/resume/diff.
+- `cargo run --no-default-features --example check_codex` is a read-only protocol/account smoke check. In the selected cloud environment the installed CLI exits before initialization because `/home/agent/.codex` is read-only; no real model execution has been asserted.
+- All original `src/styles` files remain byte-for-byte unchanged. Visual pixel parity and native interactive smoke tests are still pending.
