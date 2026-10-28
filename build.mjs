@@ -76,9 +76,10 @@ async function main() {
   const tpl = fs.readFileSync(path.join(src, "index.html"), "utf8");
   const html = tpl
     .replace("/*@CSS@*/", () => css)
-    .replace("/*@JS@*/", () => js.code.replace(/<\/script/gi, "<\\/script"));
+    .replace("<script>/*@JS@*/</script>", '<script src="./app.js"></script>');
   fs.mkdirSync(path.join(root, "dist"), { recursive: true });
   fs.writeFileSync(path.join(root, "dist/index.html"), html);
+  fs.writeFileSync(path.join(root, "dist/app.js"), js.code);
   const kb = (n) => (n / 1024).toFixed(1) + " KB";
   console.log(`built in ${Date.now() - t0}ms · css ${kb(css.length)} · js ${kb(js.code.length)} · html ${kb(html.length)}`);
 }

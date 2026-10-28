@@ -2,7 +2,7 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, ArrowRight, Check, CircleAlert, Lock, Rocket, Minus } from "@/lib/icons";
 import type { AppConfig } from "@/data/types";
-import { DEFAULT_CONFIG } from "@/data/mock";
+import { DEFAULT_CONFIG } from "@/data/defaults";
 import { store, useApp } from "@/store/state";
 import { navigate } from "@/lib/route";
 import { sync } from "@/store/actions";
@@ -65,13 +65,13 @@ export function Wizard() {
     store.set({ config: { ...draft }, setupDone: true });
     navigate({ name: "tasks" });
     sync();
-    toast({ title: "配置完成", desc: "正在从禅道同步任务 · 演示数据", tone: "success", sim: true });
+    toast({ title: "配置完成", desc: "正在从禅道同步任务", tone: "success", sim: true });
   };
 
   const exitDemo = () => {
     store.set({ setupDone: true });
     navigate({ name: "tasks" });
-    toast({ title: "已跳过配置", desc: "当前使用演示数据，可随时在「设置」里完成连接。", tone: "info", duration: 4200 });
+    toast({ title: "已跳过配置", desc: "请在设置中完成连接后同步任务。", tone: "info", duration: 4200 });
   };
 
   const canNext =
@@ -127,7 +127,7 @@ export function Wizard() {
         </ol>
         <p className="relative flex items-start gap-2 px-6 pb-6 pt-4 text-xs leading-5 text-muted-foreground">
           <Lock className="mt-0.5 size-3.5 shrink-0" />
-          凭据只保存在本机。当前是网页演示，填写的内容不会发送到任何服务器。
+          凭据加密保存在本机，仅用于连接你配置的服务。
         </p>
       </aside>
 
@@ -235,7 +235,7 @@ export function Wizard() {
         <footer className="flex shrink-0 items-center gap-2 border-t border-border bg-background px-5 py-3 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))]">
           {step.id === "welcome" ? (
             <>
-              <Button variant="ghost" onClick={exitDemo}>跳过，先看演示数据</Button>
+              <Button variant="ghost" onClick={exitDemo}>跳过，稍后配置</Button>
               <Button variant="primary" className="ml-auto" onClick={() => go(1)}>开始配置<ArrowRight /></Button>
             </>
           ) : step.id === "done" ? (

@@ -1,15 +1,20 @@
 {
-  "name": "zencode-ui",
+  "name": "zencode",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "start": "tauri dev",
+    "test": "cargo test --manifest-path src-tauri/Cargo.toml --no-default-features",
+    "package": "tauri build",
+    "tauri": "tauri"
   },
   "dependencies": {
     "@floating-ui/react": "*",
     "@headlessui/react": "*",
+    "@tauri-apps/api": "^2.12.4",
     "class-variance-authority": "*",
     "clsx": "*",
     "highlight.js": "*",
@@ -19,10 +24,13 @@
     "tailwind-merge": "*"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4",
     "@types/react": "*",
     "@types/react-dom": "*",
     "esbuild": "*",
     "tailwindcss": "^4",
     "typescript": "*"
-  }
+  },
+  "description": "ZenCode desktop workspace for ZenTao, Codex and GitLab",
+  "author": "yoonzm"
 }

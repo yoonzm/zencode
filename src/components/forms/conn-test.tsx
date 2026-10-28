@@ -1,3 +1,4 @@
+import { desktopCall } from "@/lib/desktop";
 import { useEffect, useRef, useState } from "react";
 import { cn, sleep } from "@/lib/utils";
 import { CircleAlert, CircleCheck, CircleDashed, CircleX, Loader } from "@/lib/icons";
@@ -18,36 +19,7 @@ const STEPS: Record<TestKind, string[]> = {
   codex: ["查找本机 Codex 命令行", "读取版本信息", "检查沙盒支持", "试运行一次只读任务"],
 };
 
-const isUrl = (s: string) => /^https?:\/\/[^\s/]+\.[^\s/]+/.test(s.trim()) || /^https?:\/\/localhost/.test(s.trim());
-const bad = (s: string) => /fail|error|timeout/i.test(s);
-
 type Cfg = ZentaoConfig | GitlabConfig | CodexConfig;
-
-function evaluate(kind: TestKind, c: Cfg): { failAt: number; message: string } | { ok: string } {
-  if (kind === "zentao") {
-    const z = c as ZentaoConfig;
-    if (!isUrl(z.baseUrl)) return { failAt: 0, message: "地址格式不正确，应形如 https://zentao.example.com" };
-    if (bad(z.baseUrl)) return { failAt: 1, message: "连接超时（ETIMEDOUT）。请检查网络、VPN，或确认这个地址在当前网络可访问。" };
-    if (!z.account.trim()) return { failAt: 2, message: "请填写禅道账号。" };
-    if (!z.secret.trim()) return { failAt: 2, message: z.auth === "token" ? "请填写 API Token。可在禅道「个人中心 → 安全」里生成。" : "请填写密码。" };
-    if (/bad/i.test(z.secret)) return { failAt: 2, message: "认证失败（HTTP 401）：账号或凭据不正确。" };
-    return { ok: "已连接 · 张明 · 可见 5 个产品、12 个项目（演示数据）" };
-  }
-  if (kind === "gitlab") {
-    const g = c as GitlabConfig;
-    if (!isUrl(g.baseUrl)) return { failAt: 0, message: "地址格式不正确，应形如 https://gitlab.example.com" };
-    if (bad(g.baseUrl)) return { failAt: 1, message: "连接超时（ETIMEDOUT）。自建 GitLab 通常需要先连上公司网络。" };
-    if (!g.token.trim()) return { failAt: 2, message: "请填写 Personal Access Token。" };
-    if (!g.token.startsWith("glpat-")) return { failAt: 2, message: "Token 格式无效，GitLab 的 Personal Access Token 以 glpat- 开头。" };
-    if (/bad/i.test(g.token)) return { failAt: 3, message: "Token 缺少 write_repository 权限，无法推送分支和创建 Merge Request。" };
-    return { ok: "已连接 · @zhangming · 具备 api、write_repository 权限（演示数据）" };
-  }
-  const x = c as CodexConfig;
-  const path = x.cliPath.trim();
-  if (path && /missing|notfound|bad/i.test(path)) return { failAt: 0, message: `在 ${path} 没有找到 codex。请检查路径，或清空路径让 ZenCode 从 PATH 里查找。` };
-  if (path && !/codex/i.test(path)) return { failAt: 1, message: "这个文件不像是 Codex 命令行，读取版本失败。" };
-  return { ok: `已就绪 · codex-cli 0.46.0 · ${path ? path : "来自 PATH"} · 沙盒可用（演示数据）` };
-}
 
 const idle = (kind: TestKind): TestState => ({ status: "idle", steps: STEPS[kind].map((label) => ({ label, state: "pending" })) });
 
@@ -64,25 +36,18 @@ export function useConnTest(kind: TestKind) {
   /** 返回 true 表示通过 */
   const run = async (cfg: Cfg): Promise<boolean> => {
     const mine = ++token.current;
-    const verdict = evaluate(kind, cfg);
-    const labels = STEPS[kind];
-    const steps = labels.map((label) => ({ label, state: "pending" as StepState }));
-    setState({ status: "running", steps: steps.slice() });
-    for (let i = 0; i < labels.length; i++) {
-      steps[i] = { ...steps[i], state: "running" };
-      setState({ status: "running", steps: steps.slice() });
-      await sleep(420 + Math.random() * 260);
+    const steps = [{ label: kind === "codex" ? "读取 CLI 版本与登录状态" : "验证凭据并读取服务数据", state: "running" as StepState }];
+    setState({ status: "running", steps });
+    try {
+      const message = await desktopCall("test", { kind, config: cfg });
       if (token.current !== mine) return false;
-      if ("failAt" in verdict && verdict.failAt === i) {
-        steps[i] = { ...steps[i], state: "error" };
-        setState({ status: "error", steps: steps.slice(), message: verdict.message });
-        return false;
-      }
-      steps[i] = { ...steps[i], state: "ok" };
-      setState({ status: "running", steps: steps.slice() });
+      setState({ status: "ok", steps: steps.map(s => ({ ...s, state: "ok" })), message });
+      return true;
+    } catch (e) {
+      if (token.current !== mine) return false;
+      setState({ status: "error", steps: steps.map(s => ({ ...s, state: "error" })), message: e instanceof Error ? e.message : String(e) });
+      return false;
     }
-    setState({ status: "ok", steps: steps.slice(), message: "ok" in verdict ? verdict.ok : "" });
-    return true;
   };
 
   return { state, run, reset };

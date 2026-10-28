@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ZenCode",
+  "version": "0.1.0",
+  "identifier": "io.github.yoonzm.zencode",
+  "build": { "beforeBuildCommand": "npm run build", "beforeDevCommand": "npm run build", "frontendDist": "../dist" },
+  "app": {
+    "windows": [{ "label": "main", "title": "ZenCode", "width": 1440, "height": 960, "minWidth": 800, "minHeight": 600, "decorations": false }],
+    "security": { "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'none'; base-uri 'none'" }
+  },
+  "bundle": { "active": true, "targets": "all", "category": "DeveloperTool", "shortDescription": "ZenTao to Codex to GitLab", "icon": ["icons/icon.png", "icons/icon.icns", "icons/icon.ico"], "macOS": { "minimumSystemVersion": "11.0" }, "windows": { "nsis": { "displayLanguageSelector": true, "languages": ["SimpChinese", "English"] } } }
+}

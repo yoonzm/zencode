@@ -1,3 +1,4 @@
+import { desktopCall } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
 import { Command, Moon, PanelLeft, PanelLeftClose, Search, Settings, Sun, Monitor } from "@/lib/icons";
 import { useApp } from "@/store/state";
@@ -9,8 +10,8 @@ import { Tip } from "@/components/ui/tooltip";
 import { Kbd } from "@/components/ui/kbd";
 import { Logo } from "@/components/logo";
 
-function demoToast() {
-  toast({ title: "窗口控件仅在桌面应用中生效", desc: "当前是网页预览，这里只演示 macOS / Windows 的窗口样式。", tone: "info", duration: 2600 });
+function windowAction(action: string) {
+  desktopCall("window", { action }).catch(e => toast({ title: "窗口操作失败", desc: e.message, tone: "danger" }));
 }
 
 function MacLights() {
@@ -21,7 +22,7 @@ function MacLights() {
         ["bg-warning", "最小化"],
         ["bg-success", "缩放"],
       ].map(([c, l]) => (
-        <button key={l} tabIndex={-1} onClick={demoToast} className={cn("size-3 rounded-full opacity-90 ring-1 ring-inset ring-foreground/15 transition-opacity hover:opacity-100", c)} aria-label={l} />
+        <button key={l} tabIndex={-1} onClick={() => windowAction(l)} className={cn("size-3 rounded-full opacity-90 ring-1 ring-inset ring-foreground/15 transition-opacity hover:opacity-100", c)} aria-label={l} />
       ))}
     </div>
   );
@@ -31,13 +32,13 @@ function WinControls() {
   const base = "grid h-full w-[46px] place-items-center text-foreground transition-colors";
   return (
     <div className="no-drag flex h-full items-stretch" aria-hidden>
-      <button tabIndex={-1} onClick={demoToast} className={cn(base, "hover:bg-hover")} aria-label="最小化">
+      <button tabIndex={-1} onClick={() => windowAction("最小化")} className={cn(base, "hover:bg-hover")} aria-label="最小化">
         <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5.5h10" stroke="currentColor" strokeWidth="1" /></svg>
       </button>
-      <button tabIndex={-1} onClick={demoToast} className={cn(base, "hover:bg-hover")} aria-label="最大化">
+      <button tabIndex={-1} onClick={() => windowAction("最大化")} className={cn(base, "hover:bg-hover")} aria-label="最大化">
         <svg width="10" height="10" viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9" fill="none" stroke="currentColor" strokeWidth="1" rx="1" /></svg>
       </button>
-      <button tabIndex={-1} onClick={demoToast} className={cn(base, "hover:bg-danger hover:text-white")} aria-label="关闭">
+      <button tabIndex={-1} onClick={() => windowAction("关闭")} className={cn(base, "hover:bg-danger hover:text-white")} aria-label="关闭">
         <svg width="10" height="10" viewBox="0 0 10 10"><path d="M.5.5l9 9M9.5.5l-9 9" stroke="currentColor" strokeWidth="1" /></svg>
       </button>
     </div>

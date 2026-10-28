@@ -1,14 +1,12 @@
 import { store, applyTheme, applyPlatform, EMPTY_FILTERS, type Filters, type ThemePref, type ListStatus } from "./state";
 import { toast } from "./toast";
 import { getTask, schedule, updateTask, taskLabel } from "@/engine/sim";
-import { applyStep } from "@/engine/run";
-import { followupSteps, genericScript } from "@/data/scripts";
-import { emptyRun } from "@/engine/run";
 import type { Run, ZTask } from "@/data/types";
 import { sleep, uid } from "@/lib/utils";
 import { resolvePlatform, type PlatformPref } from "@/lib/platform";
 import { navigate } from "@/lib/route";
-import { createInitialTasks } from "@/data/mock";
+import { desktopCall } from "@/lib/desktop";
+import { parsePatch } from "@/lib/diff";
 
 const simNote = "演示数据 · 未连接真实服务";
 
@@ -54,202 +52,42 @@ export function setListStatus(status: ListStatus) {
   store.set({ listStatus: status });
 }
 
-export async function sync(opts: { fail?: boolean } = {}) {
-  const s0 = store.get();
-  if (s0.syncing) return;
-  const hadList = s0.listStatus === "ready";
-  store.set({ syncing: true, listStatus: hadList ? "ready" : "loading" });
-  await sleep(opts.fail ? 1100 : 900);
-  if (opts.fail) {
-    store.set({ syncing: false, listStatus: "error" });
-    return;
-  }
-  const n = 1 + Math.floor(Math.random() * 3);
-  store.set({ syncing: false, listStatus: "ready", lastSync: Date.now() });
-  if (hadList) toast({ title: "已从禅道同步", desc: `更新 ${n} 项，没有新增冲突 · ${simNote}`, sim: true, duration: 3200 });
+export async function sync() {
+  if (store.get().syncing) return;
+  store.set({ syncing: true });
+  try { const tasks = await desktopCall("sync", { config: store.get().config }); store.set({ tasks: tasks.map(decodeTask), lastSync: Date.now(), listStatus: "ready" }); }
+  catch (e) { report(e); store.set({ listStatus: "error" }); }
+  finally { store.set({ syncing: false }); }
 }
-
-/** 把模拟数据恢复到初始（含执行中的任务），用于「重置演示」 */
-export function resetDemo() {
-  store.set({ tasks: createInitialTasks(), filters: EMPTY_FILTERS, listStatus: "ready" });
-  toast({ title: "已重置演示数据", tone: "info" });
-}
-
-// ── 任务执行（全部为模拟） ────────────────────────────────
-function userEv(text: string, ref?: string) {
-  return { delay: 0, ev: { kind: "user" as const, text, ref } };
-}
-
-export function freshIdleRun(t: ZTask) {
-  const script = genericScript(t);
-  return { ...emptyRun(), scriptId: script.id, branch: script.branch, patchKeys: script.patches, queue: script.steps, end: script.end };
-}
-
-export function startRun(id: string, instruction?: string, ref?: string) {
-  const t = getTask(id);
-  if (!t) return;
-  if (["running", "queued", "waiting", "paused"].includes(t.run.state)) return;
-  const now = Date.now();
-  const base = t.run.state === "idle" ? t.run : freshIdleRun(t);
-  let run: Run = { ...base, state: "queued", startedAt: now, finishedAt: undefined, events: [], files: [], viewed: [], mr: undefined, unread: false, model: store.get().config.codex.model };
-  if (instruction) run = applyStep(run, userEv(instruction, ref), now);
-  updateTask(id, (x) => ({
-    ...x,
-    updatedAt: now,
-    run,
-    history: [...x.history, { at: now, who: "ZenCode", text: `已交给 Codex 执行（${run.branch}）` }],
-  }));
-  toast({ title: `${taskLabel(t)} 已交给 Codex`, desc: `已加入执行队列 · 已在禅道追加备注 · ${simNote}`, sim: true });
-}
-
-export function pauseRun(id: string) {
-  const t = getTask(id);
-  if (!t || t.run.state !== "running") return;
-  const now = Date.now();
-  updateTask(id, (x) => ({
-    ...x,
-    updatedAt: now,
-    run: applyStep({ ...x.run, state: "paused" }, { delay: 0, ev: { kind: "system", text: "已暂停，进度已保留。恢复后从当前步骤继续", tone: "warn" } }, now),
-  }));
-  toast({ title: "已暂停", desc: `${taskLabel(t)} 的 Codex 会话已挂起 · ${simNote}`, tone: "info", sim: true, duration: 3000 });
-}
-
-export function resumeRun(id: string) {
-  const t = getTask(id);
-  if (!t || t.run.state !== "paused") return;
-  const now = Date.now();
-  updateTask(id, (x) => ({
-    ...x,
-    updatedAt: now,
-    run: applyStep({ ...x.run, state: "running" }, { delay: 0, ev: { kind: "system", text: "已恢复执行", tone: "info" } }, now),
-  }));
-  schedule(id, 900);
-  toast({ title: "已恢复执行", desc: taskLabel(t), tone: "info", sim: true, duration: 2600 });
-}
-
-export function stopRun(id: string) {
-  const t = getTask(id);
-  if (!t) return;
-  askConfirm({
-    title: "终止并丢弃本次执行？",
-    desc: `${taskLabel(t)} 的 Codex 会话会被终止，分支 ${t.run.branch ?? ""} 上的改动和执行记录会被丢弃，任务回到「待处理」。此操作不可撤销。`,
-    confirmLabel: "终止并丢弃",
-    danger: true,
-    onConfirm: () => {
-      updateTask(id, (x) => ({ ...x, updatedAt: Date.now(), run: freshIdleRun(x), history: [...x.history, { at: Date.now(), who: "ZenCode", text: "已终止 Codex 执行并丢弃改动" }] }));
-      toast({ title: "已终止并丢弃", desc: `${taskLabel(t)} 回到待处理 · ${simNote}`, tone: "info", sim: true });
-    },
+export function resetDemo() { void sync(); }
+function report(e: unknown) { toast({ title: "操作未完成", desc: e instanceof Error ? e.message : String(e), tone: "danger", duration: 8000 }); }
+function runCall(op: string, args: object) { return desktopCall(op, { ...args, config: store.get().config }).catch(report); }
+export function startRun(id: string, instruction?: string, ref?: string) { void runCall("start", { id, instruction: [ref, instruction].filter(Boolean).join("\n") }); }
+export function pauseRun(id: string) { void runCall("pause", { id }); }
+export function resumeRun(id: string) { startRun(id); }
+export function stopRun(id: string) { askConfirm({ title: "终止本次执行？", desc: "终止 Codex 进程，保留独立工作区、改动和执行记录。", confirmLabel: "终止执行", danger: true, onConfirm: () => { void runCall("stop", { id }); } }); }
+export function retryRun(id: string) { startRun(id); }
+export function decideApproval(id: string, evId: string, decision: "once" | "always" | "deny") { void runCall("approve", { id, evId, decision }); }
+export function sendInstruction(id: string, text: string, ref?: string) { startRun(id, text, ref); }
+export function createMr(id: string) { return runCall("mr", { id }); }
+export function openExternal(url: string) { void desktopCall("open", { url }).catch(report); }
+export function decodeTask(t: ZTask): ZTask {
+  const raw = (t.run as any).rawDiff as string | undefined;
+  if (raw) t.run.files = raw.split(/^diff --git /m).slice(1).map(part => {
+    const lines = part.split("\n");
+    const plus = lines.find(l => l.startsWith("+++ b/"));
+    const minus = lines.find(l => l.startsWith("--- a/"));
+    const path = (plus || minus || "").slice(6);
+    return parsePatch(path, part.includes("new file mode") ? "added" : "modified", part);
   });
-}
-
-export function retryRun(id: string) {
-  const t = getTask(id);
-  if (!t || t.run.state !== "failed") return;
-  const now = Date.now();
-  const run = t.run;
-  const steps = run.retry ?? [];
-  if (!steps.length) {
-    startRun(id);
-    return;
-  }
-  updateTask(id, (x) => ({ ...x, updatedAt: now, run: { ...x.run, state: "running", queue: steps, end: "review", finishedAt: undefined, retry: undefined } }));
-  schedule(id, 700);
-  toast({ title: "正在重试", desc: `${taskLabel(t)} · ${simNote}`, tone: "info", sim: true, duration: 2800 });
-}
-
-export function decideApproval(id: string, evId: string, decision: "once" | "always" | "deny") {
-  const t = getTask(id);
-  if (!t) return;
-  const now = Date.now();
-  updateTask(id, (x) => {
-    const events = x.run.events.map((e) => (e.id === evId && e.kind === "approval" ? { ...e, decision } : e));
-    let run: Run = { ...x.run, events, state: "running" };
-    if (decision === "deny") {
-      run = { ...run, queue: run.queue.filter((s) => !s.onlyIfApproved) };
-      run = applyStep(run, { delay: 0, ev: { kind: "message", text: "好的，已跳过这条命令，继续完成其余步骤。" } }, now);
-    }
-    return { ...x, updatedAt: now, run };
-  });
-  schedule(id, 900);
-  toast({
-    title: decision === "deny" ? "已拒绝该命令" : decision === "always" ? "已允许，并记住此类命令" : "已允许一次",
-    desc: simNote,
-    tone: decision === "deny" ? "info" : "success",
-    sim: true,
-    duration: 2800,
-  });
-}
-
-export function sendInstruction(id: string, text: string, ref?: string) {
-  const t = getTask(id);
-  const body = text.trim();
-  if (!t || !body) return;
-  const now = Date.now();
-  const st = t.run.state;
-  if (st === "idle") {
-    startRun(id, body, ref);
-    return;
-  }
-  if (st === "queued") {
-    updateTask(id, (x) => ({ ...x, updatedAt: now, run: applyStep(x.run, userEv(body, ref), now) }));
-    toast({ title: "已追加指令", desc: "开始执行时一并带上", sim: true, tone: "info", duration: 2600 });
-    return;
-  }
-  const first = t.run.files[0]?.path;
-  const fu = followupSteps(body, first);
-  updateTask(id, (x) => {
-    let run = applyStep(x.run, userEv(body, ref), now);
-    run = { ...run, patchKeys: { ...run.patchKeys, ...fu.patches }, unread: false };
-    if (st === "running" || st === "paused" || st === "waiting") {
-      // 追加步骤插在剩余步骤之前；去掉它自带的终态，避免提前结束
-      run = { ...run, queue: [...fu.steps.map((s) => ({ ...s, endState: undefined })), ...run.queue] };
-    } else {
-      // 已完成 / 已提交 / 失败：以追加指令再跑一轮
-      run = { ...run, state: "running", finishedAt: undefined, queue: [...(st === "failed" ? run.retry ?? [] : []), ...fu.steps], end: "review", retry: undefined };
-    }
-    return { ...x, updatedAt: now, run };
-  });
-  if (st === "review" || st === "done" || st === "failed") schedule(id, 700);
-  toast({
-    title: st === "paused" ? "已追加指令，恢复后处理" : "已追加指令",
-    desc: st === "running" || st === "waiting" ? `Codex 会在当前步骤完成后处理 · ${simNote}` : simNote,
-    tone: "info",
-    sim: true,
-    duration: 3000,
-  });
-}
-
-export async function createMr(id: string) {
-  const t = getTask(id);
-  if (!t || t.run.state !== "review" || t.run.mrBusy) return;
-  updateTask(id, (x) => ({ ...x, run: { ...x.run, mrBusy: true } }));
-  await sleep(1500);
-  const cur = getTask(id);
-  if (!cur) return;
-  const iid = 474 + Math.floor(Math.random() * 40);
-  const map = store.get().config.mappings.find((m) => m.product === cur.product);
-  const target = map?.branch ?? store.get().config.gitlab.targetBranch;
-  const zt = cur.kind === "bug" ? "已解决" : "已完成";
-  const now = Date.now();
-  updateTask(id, (x) => {
-    let run = applyStep({ ...x.run, mrBusy: false }, { delay: 0, ev: { kind: "system", text: `已创建 Merge Request !${iid}：${x.run.branch} → ${target}`, tone: "success" } }, now);
-    run = applyStep(run, { delay: 0, ev: { kind: "system", text: `已回写禅道：状态 → ${zt}，并附上 MR 链接`, tone: "success" } }, now + 1);
-    run = { ...run, state: "done", finishedAt: now, mr: { iid, url: `https://gitlab.acme.cn/${x.repoId}/-/merge_requests/${iid}` } };
-    return { ...x, updatedAt: now, ztStatus: zt, run, history: [...x.history, { at: now, who: "ZenCode", text: `创建 MR !${iid}，状态 → ${zt}` }] };
-  });
-  toast({
-    title: `已创建 Merge Request !${iid}`,
-    desc: `${cur.run.branch} → ${target}${store.get().config.gitlab.mrDraft ? "（草稿）" : ""} · 已回写禅道：${zt} · ${simNote}`,
-    sim: true,
-    duration: 6000,
-    action: { label: "在 GitLab 打开", run: () => toast({ title: "这里是演示", desc: "正式版会在浏览器中打开 GitLab 的 MR 页面。", tone: "info" }) },
-  });
+  return t;
 }
 
 export function markViewed(id: string, path: string, viewed: boolean) {
   updateTask(id, (x) => {
     const set = new Set(x.run.viewed);
     viewed ? set.add(path) : set.delete(path);
+    void desktopCall("viewed", { id, paths: [...set] }).catch(report);
     return { ...x, run: { ...x.run, viewed: [...set] } };
   });
 }

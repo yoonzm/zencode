@@ -1,3 +1,4 @@
+import { openExternal } from "@/store/actions";
 import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, Calendar, Copy, Ellipsis, ExternalLink, GitBranch, GitMerge, GitPullRequest, Link, Pause, Play, RotateCcw, Square, TriangleAlert, Check, SearchX } from "@/lib/icons";
@@ -94,7 +95,7 @@ function Actions({ task }: { task: ZTask }) {
       {s === "done" && (
         <>
           {run.mr && (
-            <Button variant="secondary" onClick={() => toast({ title: "这里是演示", desc: `正式版会在浏览器打开 MR !${run.mr!.iid}。`, tone: "info" })}>
+            <Button variant="secondary" onClick={() => openExternal(run.mr!.url)}>
               <GitMerge />MR !{run.mr.iid}<ExternalLink className="opacity-60" />
             </Button>
           )}
@@ -177,7 +178,7 @@ export function TaskDetail({ id, onBack }: { id: string; onBack?: () => void }) 
           <span className="min-w-0 truncate">{task.product} / {task.module}</span>
           <div className="ml-auto flex items-center gap-0.5">
             <Tip label="在禅道中打开">
-              <Button variant="ghost" size="icon-sm" aria-label="在禅道中打开" onClick={() => toast({ title: "这里是演示", desc: `正式版会在浏览器打开禅道的 ${task.kind === "bug" ? "Bug" : "需求"} #${task.no}。`, tone: "info" })}>
+              <Button variant="ghost" size="icon-sm" aria-label="在禅道中打开" onClick={() => openExternal(`${store.get().config.zentao.baseUrl}/${task.kind}-view-${task.no}.html`)}>
                 <ExternalLink />
               </Button>
             </Tip>

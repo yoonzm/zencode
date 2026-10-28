@@ -66,7 +66,7 @@ export interface Opt<T extends string> {
 export function Select<T extends string>({ value, onChange, options, id, className, placeholder = "请选择", invalid }: { value: T | ""; onChange: (v: T) => void; options: Opt<T>[]; id?: string; className?: string; placeholder?: string; invalid?: boolean }) {
   const cur = options.find((o) => o.value === value);
   return (
-    <Listbox value={value} onChange={onChange}>
+    <Listbox value={value as T} onChange={onChange}>
       <ListboxButton
         id={id}
         aria-invalid={invalid || undefined}

@@ -103,7 +103,7 @@ export function CommandPalette() {
       { id: "f-active", group: "筛选", title: "只看执行中", icon: Sparkles, run: done(() => { setFilters({ states: ["running", "queued", "waiting", "paused"] }); navigate({ name: "tasks" }); }) },
       { id: "f-review", group: "筛选", title: "只看待审核", icon: GitPullRequest, run: done(() => { setFilters({ states: ["review"] }); navigate({ name: "tasks" }); }) },
       { id: "f-clear", group: "筛选", title: "清除全部筛选", icon: ListFilter, run: done(() => resetFilters()) },
-      { id: "s-fail", group: "状态模拟", title: "模拟：禅道同步失败", hint: "查看错误状态", icon: WifiOff, keywords: "错误 error", run: done(() => { navigate({ name: "tasks" }); sync({ fail: true }); }) },
+      { id: "s-fail", group: "状态模拟", title: "模拟：禅道同步失败", hint: "查看错误状态", icon: WifiOff, keywords: "错误 error", run: done(() => { navigate({ name: "tasks" }); sync(); }) },
       { id: "s-empty", group: "状态模拟", title: "模拟：没有任务", hint: "查看空状态", icon: Inbox, keywords: "空 empty", run: done(() => { navigate({ name: "tasks" }); setListStatus("empty"); }) },
       { id: "s-load", group: "状态模拟", title: "模拟：列表加载中", hint: "查看骨架屏", icon: Loader, keywords: "加载 loading", run: done(() => { navigate({ name: "tasks" }); setListStatus("loading"); setTimeout(() => setListStatus("ready"), 2600); }) },
       { id: "s-ok", group: "状态模拟", title: "恢复正常列表", icon: CircleCheck, run: done(() => { setListStatus("ready"); }) },
@@ -164,7 +164,7 @@ export function CommandPalette() {
     rows.push({ type: "i", r, i });
   });
 
-  const onKey = (e: KeyboardEvent) => {
+  const onKey = (e: import("react").KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setActive((a) => Math.min(results.length - 1, a + 1));

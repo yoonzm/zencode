@@ -1,6 +1,7 @@
 import { createStore, useStore } from "@/lib/store";
 import type { AppConfig, Priority, RunState, ZTask } from "@/data/types";
-import { DEFAULT_CONFIG, createInitialTasks } from "@/data/mock";
+import { DEFAULT_CONFIG } from "@/data/defaults";
+import { desktopCall } from "@/lib/desktop";
 import { loadJSON, saveJSON } from "@/lib/utils";
 import { resolvePlatform, type Platform, type PlatformPref } from "@/lib/platform";
 
@@ -88,18 +89,18 @@ const defaultPrefs: Prefs = {
   config: DEFAULT_CONFIG,
 };
 
-const saved = loadJSON<Prefs>(PREF_KEY, defaultPrefs);
+const saved = defaultPrefs;
 
 export const store = createStore<AppState>({
   ...defaultPrefs,
   ...saved,
   notify: { ...defaultPrefs.notify, ...(saved.notify ?? {}) },
   config: { ...defaultPrefs.config, ...(saved.config ?? {}) },
-  tasks: createInitialTasks(),
+  tasks: [],
   filters: EMPTY_FILTERS,
   listStatus: "loading",
   syncing: false,
-  lastSync: Date.now() - 2 * 60_000,
+  lastSync: 0,
   paletteOpen: false,
   shortcutsOpen: false,
   toasts: [],
@@ -117,14 +118,23 @@ export function useApp<S>(selector: (s: AppState) => S): S {
 // ── 持久化 ────────────────────────────────────────────────
 const PERSIST_KEYS: (keyof Prefs)[] = ["theme", "platformPref", "density", "windowControls", "sidebarOpen", "listWidth", "group", "sort", "setupDone", "notify", "config"];
 let lastPersisted = "";
+let hydrated = false;
+export async function hydrate() {
+  const data = await desktopCall("load");
+  store.set({ ...data.prefs, tasks: data.tasks, listStatus: "ready" });
+  applyTheme(store.get().theme); applyPlatform(resolvePlatform(store.get().platformPref));
+  localStorage.removeItem(PREF_KEY);
+  hydrated = true;
+}
 store.subscribe(() => {
+  if (!hydrated) return;
   const s = store.get();
   const slim: Record<string, unknown> = {};
   for (const k of PERSIST_KEYS) slim[k] = s[k];
   const json = JSON.stringify(slim);
   if (json !== lastPersisted) {
     lastPersisted = json;
-    saveJSON(PREF_KEY, slim);
+    desktopCall("save", slim).catch(e => window.dispatchEvent(new CustomEvent("desktop-error", { detail: e.message })));
   }
 });
 

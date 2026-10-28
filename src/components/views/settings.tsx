@@ -136,7 +136,7 @@ function useDraft<K extends "zentao" | "gitlab" | "codex">(key: K) {
     revert: () => setDraft(saved),
     save: () => {
       store.set((s) => ({ config: { ...s.config, [key]: draft } }));
-      toast({ title: "设置已保存", desc: "仅保存在本机浏览器 · 演示", sim: true });
+      toast({ title: "设置已保存", desc: "保存在本机；凭据由操作系统加密", sim: true });
     },
   };
 }
@@ -247,7 +247,7 @@ function Advanced() {
       <section>
         <h3 className="mb-2 text-sm font-medium text-foreground">数据</h3>
         <Group>
-          <Row title="重置演示数据" desc="任务和执行记录恢复到初始状态。"><Button onClick={resetDemo}><RotateCcw />重置</Button></Row>
+          <Row title="重新同步数据" desc="重新从禅道读取任务，保留本地执行记录。"><Button onClick={resetDemo}><RotateCcw />重置</Button></Row>
           <Row title="重新运行配置向导" desc="从头走一遍首次配置流程。"><Button onClick={() => navigate({ name: "setup" })}><Rocket />打开向导</Button></Row>
           <Row title="清除本地设置" desc="删除保存在浏览器里的主题、配置和偏好，并回到首次配置。">
             <Button
@@ -284,7 +284,7 @@ function About() {
         <p className="text-sm text-muted-foreground">版本 0.1.0 · 界面原型</p>
       </div>
       <p className="max-w-md text-sm leading-6 text-muted-foreground">
-        这是 ZenCode 桌面应用的网页演示。所有任务、连接测试、Codex 执行和 Merge Request 都是本地模拟，没有任何网络请求发出。
+        ZenCode 通过本机 Codex CLI 处理禅道任务，并在审核后推送 GitLab MR。当前版本的兼容范围与限制见项目 README。
       </p>
       <Plug className="hidden" />
     </div>

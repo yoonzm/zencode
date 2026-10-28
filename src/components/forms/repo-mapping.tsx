@@ -1,20 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Plus, Trash, Wand, FolderGit } from "@/lib/icons";
 import type { RepoMapping } from "@/data/types";
-import { ZENTAO_PRODUCTS } from "@/data/mock";
+import { desktopCall } from "@/lib/desktop";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/fields";
 import { sleep, uid } from "@/lib/utils";
 import { toast } from "@/store/toast";
 import { EmptyState } from "@/components/ui/empty";
-
-const GUESS: Record<string, string> = {
-  企业管理后台: "acme/web-console",
-  支付中心: "acme/payment-service",
-  "移动端 App": "acme/mobile-app",
-  开放平台: "acme/open-api",
-  数据看板: "acme/data-board",
-};
 
 export function mappingErrors(m: RepoMapping) {
   return {
@@ -26,30 +18,19 @@ export function mappingErrors(m: RepoMapping) {
 export const mappingsValid = (list: RepoMapping[]) => list.length > 0 && list.every((m) => !Object.values(mappingErrors(m)).some(Boolean));
 
 export function RepoMappingEditor({ value, onChange, showErrors }: { value: RepoMapping[]; onChange: (v: RepoMapping[]) => void; showErrors?: boolean }) {
+  const [products, setProducts] = useState<string[]>(value.map(m => m.product));
+  useEffect(() => { desktopCall("products").then(setProducts).catch(() => {}); }, []);
   const [matching, setMatching] = useState(false);
   const update = (id: string, patch: Partial<RepoMapping>) => onChange(value.map((m) => (m.id === id ? { ...m, ...patch } : m)));
   const used = new Set(value.map((m) => m.product));
 
   const autoMatch = async () => {
-    setMatching(true);
-    await sleep(800);
-    const free = ZENTAO_PRODUCTS.filter((p) => !used.has(p));
-    let filled = 0;
-    const next = value.map((m) => {
-      if (m.repo.trim() && m.localPath.trim()) return m;
-      const g = GUESS[m.product];
-      if (!g) return m;
-      filled++;
-      return { ...m, repo: m.repo || g, localPath: m.localPath || `~/code/${g.split("/")[1]}` };
-    });
-    const added = free.map((p) => ({ id: uid("m"), product: p, repo: GUESS[p] ?? "", localPath: GUESS[p] ? `~/code/${GUESS[p].split("/")[1]}` : "", branch: "main", testCmd: "" }));
-    onChange([...next, ...added]);
-    setMatching(false);
-    toast({ title: `已按名称匹配 ${filled + added.length} 项`, desc: "请核对仓库和路径是否正确 · 演示数据", sim: true, tone: "info", duration: 3600 });
+    try { const names = await desktopCall("products"); setProducts(names); toast({ title: "已读取禅道产品", desc: "请手动指定 GitLab 仓库及本地克隆路径，避免匹配到错误仓库。", tone: "info" }); }
+    catch (e) { toast({ title: "读取失败", desc: String(e), tone: "danger" }); }
   };
 
   const add = () =>
-    onChange([...value, { id: uid("m"), product: ZENTAO_PRODUCTS.find((p) => !used.has(p)) ?? "", repo: "", localPath: "", branch: "main", testCmd: "" }]);
+    onChange([...value, { id: uid("m"), product: products.find((p) => !used.has(p)) ?? "", repo: "", localPath: "", branch: "main", testCmd: "" }]);
 
   return (
     <div className="space-y-3">
@@ -74,7 +55,7 @@ export function RepoMappingEditor({ value, onChange, showErrors }: { value: Repo
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
                     禅道产品
-                    <Select value={m.product} onChange={(v: string) => update(m.id, { product: v })} options={ZENTAO_PRODUCTS.map((p) => ({ value: p, label: p }))} invalid={showE && !!e.product} />
+                    <Select value={m.product} onChange={(v: string) => update(m.id, { product: v })} options={products.map((p) => ({ value: p, label: p }))} invalid={showE && !!e.product} />
                   </label>
                   <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
                     GitLab 仓库
