@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
-import { ChevronsUpDown, FolderGit, Inbox, RefreshCw, Search, Sparkles, User, CircleCheck, GitPullRequest, RotateCcw, Rocket } from "@/lib/icons";
+import { ChevronsUpDown, FolderGit, Inbox, RefreshCw, Search, Settings, Sparkles, User, CircleCheck, GitPullRequest, RotateCcw, Rocket } from "@/lib/icons";
 import { useApp } from "@/store/state";
 import { PRESETS, activePreset, filterTasks, presetFilters } from "@/store/select";
 import { setFilters, setPalette, sync } from "@/store/actions";
@@ -180,6 +180,23 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         )}
       </nav>
 
+      <div className="border-t border-border px-2 py-2">
+        <button
+          onClick={() => {
+            navigate({ name: "prefs", section: "general" });
+            go();
+          }}
+          aria-current={route.name === "prefs" ? "page" : undefined}
+          className={cn(
+            "flex h-8 w-full items-center gap-2 rounded-md px-2 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/60",
+            route.name === "prefs" ? "bg-active text-foreground" : "text-muted-foreground hover:bg-hover hover:text-foreground",
+          )}
+        >
+          <Settings className="size-4" />
+          <span className="flex-1 text-left">设置</span>
+          <Kbd keys={["mod", ","]} />
+        </button>
+      </div>
       {syncing && <span className="sr-only" role="status">正在同步</span>}
     </div>
   );

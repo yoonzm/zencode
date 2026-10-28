@@ -34,14 +34,14 @@ export function AppShell() {
       <TitleBar />
       <div className="relative flex min-h-0 flex-1">
         {!full && (
-          <div className="shrink-0 overflow-hidden transition-[width] duration-200 ease-out" style={{ width: showInline ? SIDEBAR_W : 0 }} aria-hidden={!showInline}>
-            <div inert={!showInline ? ("" as any) : undefined}><Sidebar /></div>
+          <div className="h-full shrink-0 overflow-hidden transition-[width] duration-200 ease-out" style={{ width: showInline ? SIDEBAR_W : 0 }} aria-hidden={!showInline}>
+            <div className="h-full" inert={!showInline ? ("" as any) : undefined}><Sidebar /></div>
           </div>
         )}
         {showDrawer && (
           <>
             <button aria-label="关闭侧边栏" className="anim-fade fixed inset-0 z-40 bg-scrim" onClick={toggleSidebar} />
-            <aside className="anim-rise fixed bottom-0 left-0 top-9 z-50 border-r border-border bg-surface shadow-pop" style={{ width: SIDEBAR_W }}>
+            <aside className="anim-rise fixed bottom-0 left-0 top-10 z-50 border-r border-border bg-surface shadow-pop" style={{ width: SIDEBAR_W }}>
               <Sidebar onNavigate={toggleSidebar} />
             </aside>
           </>

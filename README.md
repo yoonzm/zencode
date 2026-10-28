@@ -1,6 +1,6 @@
 # ZenCode
 
-Tauri 2 + Rust desktop application, retaining the React / TypeScript / Tailwind 4 interface from [yoonzm/zencode-ui](https://github.com/yoonzm/zencode-ui), baseline `33c33acb1e557d00d4016fcb9d677cd44ff0ed88`.
+Tauri 2 + Rust desktop application, retaining the React / TypeScript / Tailwind 4 interface from [yoonzm/zencode-ui](https://github.com/yoonzm/zencode-ui), initial baseline `33c33acb1e557d00d4016fcb9d677cd44ff0ed88`, with shell/settings layout changes selectively synchronized through `c361fc7c09955672062ac6325497f4758ebe7270`. Desktop service wiring and fixes are retained; prototype simulation controls are excluded.
 
 ## Development
 

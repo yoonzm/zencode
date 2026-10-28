@@ -1,21 +1,19 @@
-import { cn } from "@/lib/utils";
-import { Command, Moon, PanelLeft, PanelLeftClose, Search, Settings, Sun, Monitor } from "@/lib/icons";
+import { Moon, PanelLeft, PanelLeftClose, Search, Sun, Monitor } from "@/lib/icons";
 import { useApp } from "@/store/state";
 import { cycleTheme, setPalette, toggleSidebar } from "@/store/actions";
-import { navigate, useRoute } from "@/lib/route";
-import { useMedia } from "@/lib/hooks";
+import { useRoute } from "@/lib/route";
 import { Tip } from "@/components/ui/tooltip";
-import { Kbd } from "@/components/ui/kbd";
 import { Logo } from "@/components/logo";
 
+const iconBtn =
+  "no-drag grid size-7 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60";
+
+/** Business toolbar; native OS decorations provide the window controls. */
 export function TitleBar() {
-  const platform = useApp((s) => s.platform);
   const sidebarOpen = useApp((s) => s.sidebarOpen);
   const theme = useApp((s) => s.theme);
   const tasks = useApp((s) => s.tasks);
   const route = useRoute();
-  const roomy = useMedia("(min-width: 700px)");
-  const mac = platform === "mac";
 
   let title = "任务";
   if (route.name === "task") {
@@ -25,51 +23,35 @@ export function TitleBar() {
   else if (route.name === "setup") title = "首次配置";
 
   const ThemeIcon = theme === "light" ? Sun : theme === "dark" ? Moon : Monitor;
+  const themeLabel = theme === "light" ? "浅色" : theme === "dark" ? "深色" : "跟随系统";
 
   return (
-    <header className={cn("drag-region app-chrome relative z-30 flex shrink-0 items-center bg-surface", mac ? "h-11" : "h-9")}>
-      <div className="no-drag flex items-center gap-1 pl-2">
-        {!mac && <Logo size={16} className="mx-1.5 text-foreground" />}
+    <header className="drag-region app-chrome relative z-30 flex h-10 shrink-0 items-center gap-1 bg-surface px-2">
+      {route.name !== "setup" && (
         <Tip label={sidebarOpen ? "收起侧边栏" : "展开侧边栏"} keys={["mod", "B"]}>
-          <button
-            onClick={toggleSidebar}
-            aria-label={sidebarOpen ? "收起侧边栏" : "展开侧边栏"}
-            aria-pressed={sidebarOpen}
-            className="grid size-7 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
-          >
+          <button onClick={toggleSidebar} aria-label={sidebarOpen ? "收起侧边栏" : "展开侧边栏"} aria-pressed={sidebarOpen} className={iconBtn}>
             {sidebarOpen ? <PanelLeftClose className="size-4" /> : <PanelLeft className="size-4" />}
           </button>
         </Tip>
-      </div>
+      )}
+      {(!sidebarOpen || route.name === "setup") && <Logo size={16} className="ml-1 text-foreground" />}
 
-      <div className={cn("pointer-events-none absolute inset-x-0 flex items-center justify-center text-sm font-medium text-muted-foreground", mac ? "" : "")} aria-hidden>
+      <div className="pointer-events-none absolute inset-x-0 flex items-center justify-center text-sm font-medium text-muted-foreground" aria-hidden>
         <span className="truncate px-24">{title}</span>
       </div>
 
-      <div className="no-drag ml-auto flex h-full items-center gap-1 pr-2">
-        <button
-          onClick={() => setPalette(true)}
-          className={cn(
-            "group hidden h-7 items-center gap-2 rounded-md border border-border bg-card/70 pl-2 pr-1.5 text-sm text-muted-foreground outline-none transition-colors hover:border-border-strong hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 sm:flex",
-            roomy ? "w-56" : "w-auto",
-          )}
-          aria-label="打开命令面板"
-        >
-          <Search className="size-3.5" />
-          <span className="flex-1 truncate text-left">搜索或输入命令</span>
-          <Kbd keys={["mod", "K"]} />
-        </button>
-        <button onClick={() => setPalette(true)} aria-label="打开命令面板" className="grid size-7 place-items-center rounded-md text-muted-foreground outline-none hover:bg-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 sm:hidden">
-          <Command className="size-4" />
-        </button>
-        <Tip label={`主题：${theme === "light" ? "浅色" : theme === "dark" ? "深色" : "跟随系统"}`}>
-          <button onClick={cycleTheme} aria-label="切换主题" className="grid size-7 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60">
+      <div className="no-drag ml-auto flex items-center gap-1">
+        {/* 侧边栏收起时，搜索入口仍然可用；展开时用侧边栏里的搜索框 */}
+        {!sidebarOpen && route.name !== "setup" && (
+          <Tip label="搜索或输入命令" keys={["mod", "K"]}>
+            <button onClick={() => setPalette(true)} aria-label="打开命令面板" className={iconBtn}>
+              <Search className="size-4" />
+            </button>
+          </Tip>
+        )}
+        <Tip label={`主题：${themeLabel}`}>
+          <button onClick={cycleTheme} aria-label={`切换主题，当前：${themeLabel}`} className={iconBtn}>
             <ThemeIcon className="size-4" />
-          </button>
-        </Tip>
-        <Tip label="设置" keys={["mod", ","]}>
-          <button onClick={() => navigate({ name: "prefs", section: "general" })} aria-label="设置" className="grid size-7 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60">
-            <Settings className="size-4" />
           </button>
         </Tip>
       </div>

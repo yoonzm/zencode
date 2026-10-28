@@ -12,3 +12,17 @@ test('native decorations own window controls while business toolbar keeps drag a
  assert.doesNotMatch(settings,/窗口风格|显示窗口控件|setPlatformPref/);
  assert.doesNotMatch(readFileSync('src-tauri/src/main.rs','utf8'),/"window" =>|\.decorations\(false\)/);
 });
+
+test('upstream shell keeps one search entry and anchors settings below the scrollable navigation',()=>{
+ const titlebar=readFileSync('src/components/shell/titlebar.tsx','utf8');
+ assert.match(titlebar,/flex h-10 shrink-0/);
+ assert.match(titlebar,/!sidebarOpen && route.name !== "setup"/);
+ assert.equal((titlebar.match(/aria-label="打开命令面板"/g)||[]).length,1);
+ assert.doesNotMatch(titlebar,/aria-label="设置"|w-56/);
+ const sidebar=readFileSync('src/components/shell/sidebar.tsx','utf8');
+ assert.ok(sidebar.indexOf('<Settings className=')>sidebar.indexOf('</nav>'));
+ const shell=readFileSync('src/components/shell/app-shell.tsx','utf8');
+ assert.match(shell,/className="h-full shrink-0 overflow-hidden/);
+ assert.match(shell,/className="h-full" inert=/);
+ assert.match(shell,/left-0 top-10 z-50/);
+});
