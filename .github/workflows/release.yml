@@ -1,0 +1,59 @@
+name: Publish verified installers
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful Desktop installers run ID
+        required: true
+        type: string
+      commit:
+        description: Exact 40-character build commit SHA
+        required: true
+        type: string
+      tag:
+        description: Version tag (vX.Y.Z)
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      run_id:
+        required: true
+        type: string
+      commit:
+        required: true
+        type: string
+      tag:
+        required: true
+        type: string
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify build and version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_RUN: ${{ inputs.run_id }}
+          RELEASE_COMMIT: ${{ inputs.commit }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: python3 .github/scripts/release.py verify
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.run_id }}
+          pattern: ZenCode-*
+          path: release-assets
+          merge-multiple: true
+      - name: Publish installers without replacing existing assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_RUN: ${{ inputs.run_id }}
+          RELEASE_COMMIT: ${{ inputs.commit }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: python3 .github/scripts/release.py publish

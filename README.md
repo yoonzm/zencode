@@ -43,3 +43,9 @@ This is an implementation in validation, not a claim of complete production read
 - All original `src/styles` files remain byte-for-byte unchanged. Visual pixel parity remains unverified: both baseline and current pages were blocked by the environment browser policy. Windows installer launch smoke testing passes in CI; macOS disk images are mounted and verified, but interactive native flows still require a real desktop.
 
 A frontend persistence regression test also verifies that vault failures do not create a toast/save retry loop, explicit retries work, and the saved platform preference is restored.
+
+## Versioned releases
+
+Ordinary branch pushes build private CI artifacts only. After updating package/Tauri versions consistently, push a `vX.Y.Z` tag to build all three installers and publish a Release only after their tests and platform checks succeed. Only the release job requests contents write permission; repository access settings remain unchanged.
+
+To publish an already verified build, manually run **Publish verified installers** with its successful Desktop installers run ID, exact 40-character commit SHA and matching version tag. This reuses the original artifacts. Conflicting tags or existing releases are rejected; assets are never overwritten. Upload failures leave a draft for inspection. Installer checksums are included in SHA256SUMS.txt. Keep validation limitations in the release notes current before future versions.

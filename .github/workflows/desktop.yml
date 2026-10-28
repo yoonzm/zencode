@@ -2,6 +2,7 @@ name: Desktop installers
 on:
   push:
     branches: [main, 'feat/**']
+    tags: ['v*.*.*']
   workflow_dispatch:
 permissions:
   contents: read
@@ -72,3 +73,15 @@ jobs:
             src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
           if-no-files-found: error
           retention-days: 14
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    permissions:
+      contents: write
+      actions: read
+    uses: ./.github/workflows/release.yml
+    with:
+      run_id: ${{ format('{0}', github.run_id) }}
+      commit: ${{ github.sha }}
+      tag: ${{ github.ref_name }}
