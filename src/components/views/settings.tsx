@@ -58,23 +58,24 @@ function SaveBar({ dirty, valid = true, onSave, onRevert }: { dirty: boolean; va
 }
 
 // ── 通用 ──────────────────────────────────────────────────
+// Explicit cross-axis sizing overrides older WebView button defaults (align-items: flex-start).
 function ThemeCard({ id, label, icon: Icon, active }: { id: ThemePref; label: string; icon: any; active: boolean }) {
   const scope = id === "dark" ? "theme-dark" : "theme-light";
   return (
     <button
       onClick={() => setTheme(id)}
       aria-pressed={active}
-      className={cn("group flex flex-col gap-2 rounded-xl border p-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/60", active ? "border-accent bg-accent-soft" : "border-border hover:border-border-strong")}
+      className={cn("group flex min-w-0 flex-col items-stretch gap-2 rounded-xl border p-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/60", active ? "border-accent bg-accent-soft" : "border-border hover:border-border-strong")}
     >
       {id === "system" ? (
-        <div className="relative h-16 overflow-hidden rounded-md border border-border">
+        <div className="relative h-16 w-full overflow-hidden rounded-md border border-border">
           <div className="theme-light absolute inset-y-0 left-0 w-1/2 bg-background"><Preview /></div>
           <div className="theme-dark absolute inset-y-0 right-0 w-1/2 bg-background"><Preview right /></div>
         </div>
       ) : (
-        <div className={cn(scope, "h-16 overflow-hidden rounded-md border border-border bg-background")}><Preview /></div>
+        <div className={cn(scope, "h-16 w-full overflow-hidden rounded-md border border-border bg-background")}><Preview /></div>
       )}
-      <span className="flex items-center gap-1.5 px-0.5 text-sm font-medium text-foreground">
+      <span className="flex w-full items-center gap-1.5 px-0.5 text-sm font-medium text-foreground">
         <Icon className="size-3.5 text-muted-foreground" />
         {label}
         {active && <Check className="ml-auto size-3.5 text-accent" />}
