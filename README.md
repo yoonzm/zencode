@@ -1,6 +1,6 @@
 # ZenCode
 
-Tauri 2 + Rust desktop application, retaining the React / TypeScript / Tailwind 4 interface from [yoonzm/zencode-ui](https://github.com/yoonzm/zencode-ui), initial baseline `33c33acb1e557d00d4016fcb9d677cd44ff0ed88`, with shell/settings and per-connection TLS controls selectively synchronized through `e6dd0a7`. Desktop service wiring and fixes are retained; prototype simulation controls are excluded.
+Tauri 2 + Rust desktop application, retaining the React / TypeScript / Tailwind 4 interface from [yoonzm/zencode-ui](https://github.com/yoonzm/zencode-ui), initial baseline `33c33acb1e557d00d4016fcb9d677cd44ff0ed88`, with shell/settings and per-connection TLS controls selectively synchronized through `7c9b4eb`. Desktop service wiring and fixes are retained; prototype simulation controls are excluded.
 
 ## Development
 
@@ -29,7 +29,8 @@ npm run package
 - Each task gets an isolated Git worktree and branch under application data. Existing user checkout changes are not discarded. Execution failures and app interruption retain the worktree and history.
 - Codex uses `app-server --listen stdio://`, thread start/resume, turn start/steer/interrupt, message streaming and command/file approval responses. “Always” currently means the current Codex session. Pause interrupts the current turn; resume creates a new turn in the same thread, not an OS process freeze.
 - Review shows a real Git diff, including new files. Clicking MR stages, commits and pushes that isolated branch, then creates/reuses the MR and writes its link to ZenTao. Git push uses the user's configured Git credential helper/SSH, independently of the API PAT. Origin is verified against the configured GitLab project before push.
-- MR failure remains reviewable. If MR creation succeeds but ZenTao writeback fails, retry reuses the recorded MR. ZenTao status and fix version are preserved, as requested; only the MR link is added.
+- Before MR submission, all effective `origin` push URLs are checked against the project's GitLab-provided SSH or HTTP clone URL. SSH and HTTP API ports are independent; a separate or additional `pushurl` must still match the project.
+- MR failure remains reviewable. If MR creation succeeds but ZenTao writeback fails, the review view keeps the MR open/copy actions and offers a writeback retry instead of another create action. Empty or invalid JSON responses identify the failing endpoint without exposing response bodies. A history readback is attempted even when the comment response fails; only a verified link completes the task. Manual insertion of the MR link in ZenTao followed by retry is also verified without posting another comment. ZenTao status and fix version are preserved; only the MR link is added.
 
 ## Installers and validation limits
 

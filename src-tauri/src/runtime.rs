@@ -726,12 +726,17 @@ impl Runtime {
         let project = api
             .request(&format!("/projects/{encoded}"), "GET", None)
             .await?;
-        let remote = command("git", &["remote", "get-url", "origin"], Some(&cwd)).await?;
-        validate_remote(
-            &remote,
-            text(&config["gitlab"], "baseUrl"),
-            text(&project, "path_with_namespace"),
-        )?;
+        let remotes = command(
+            "git",
+            &["remote", "get-url", "--push", "--all", "origin"],
+            Some(&cwd),
+        ).await?;
+        if remotes.is_empty() {
+            return Err("origin 未配置推送地址".into());
+        }
+        for remote in remotes.lines() {
+            validate_remote(remote, &project)?;
+        }
         if run["mr"].is_null() {
             let reviewed = text(run, "rawDiff").to_owned();
             let diff = self.diff(id).await?;
@@ -790,6 +795,13 @@ impl Runtime {
             })
             .await?;
         }
+        if let Err(error) = self.writeback_mr(id, config).await {
+            self.update(id, |t| t["run"]["writebackError"] = json!(error)).await?;
+            return Err(format!("MR 已创建，禅道回写未完成：{error}。可打开现有 MR；重试不会重复创建 MR。"));
+        }
+        Ok(())
+    }
+    async fn writeback_mr(&self, id: &str, config: &Value) -> Result<()> {
         let t = self.task(id).await?;
         let zt = services::zentao(&config["zentao"]).await?;
         let route = format!(
@@ -804,18 +816,19 @@ impl Runtime {
         let link = text(&t["run"]["mr"], "url");
         let before = zt.request(&route, "GET", None).await?;
         if !before["actions"].to_string().contains(link) {
-            zt.comment(
+            let comment_result = zt.comment(
                 text(&t, "kind"),
                 t["no"].as_u64().ok_or("缺少禅道编号")?,
                 link,
             )
-            .await?;
+            .await;
             let verified = zt.request(&route, "GET", None).await?;
             if !verified["actions"].to_string().contains(link) {
+                if let Err(error) = comment_result { return Err(error); }
                 return Err("MR 已创建，但未能在禅道历史中验证回写链接。请核对此版本 comments API，任务仍保留待审核。".into());
             }
         }
-        self.update(id,|t|{t["run"]["state"]=json!("done");push_event(t,json!({"kind":"system","tone":"success","text":"已创建 MR 并回写链接。禅道状态未自动变更，请按团队工作流审核。"}));}).await
+        self.update(id,|t|{t["run"]["state"]=json!("done");t["run"].as_object_mut().unwrap().remove("writebackError");push_event(t,json!({"kind":"system","tone":"success","text":"已创建 MR 并回写链接。禅道状态未自动变更，请按团队工作流审核。"}));}).await
     }
     pub async fn shutdown(&self) {
         for job in self.jobs.lock().await.values() {
@@ -834,29 +847,41 @@ fn push_event(t: &mut Value, mut ev: Value) {
         es.push(ev);
     }
 }
-pub fn validate_remote(remote: &str, base: &str, project: &str) -> Result<()> {
-    let normalized = if let Some(rest) = remote.strip_prefix("git@") {
-        rest.replacen(':', "/", 1)
+fn repository_url(raw: &str) -> Result<url::Url> {
+    let normalized = if !raw.contains("://") {
+        let (authority, path) = raw.rsplit_once(':').ok_or("无法识别仓库地址")?;
+        if !authority.contains('@') || authority.contains('/') {
+            return Err("无法识别 SSH 仓库地址".into());
+        }
+        format!("ssh://{authority}/{}", path.trim_start_matches('/'))
     } else {
-        remote.to_owned()
+        raw.to_owned()
     };
-    let normalized = if remote.starts_with("git@") {
-        format!("https://{normalized}")
-    } else {
-        normalized
-    };
-    let u = url::Url::parse(&normalized).map_err(|_| "无法识别 origin URL")?;
-    let expected = url::Url::parse(base).map_err(|_| "无效 GitLab 地址")?;
-    if ["http", "https"].contains(&u.scheme())
-        && (u.scheme() != expected.scheme()
-            || u.port_or_known_default() != expected.port_or_known_default())
+    let url = url::Url::parse(&normalized).map_err(|_| "无法识别仓库地址")?;
+    if !["http", "https", "ssh"].contains(&url.scheme())
+        || url.host_str().is_none()
+        || url.query().is_some()
+        || url.fragment().is_some()
     {
-        return Err("本地 origin 与 GitLab 协议或端口不一致，拒绝推送".into());
+        return Err("不支持的仓库地址".into());
     }
-    if u.host_str() != expected.host_str()
-        || u.path().trim_start_matches('/').trim_end_matches(".git") != project
+    Ok(url)
+}
+pub fn validate_remote(remote: &str, project: &Value) -> Result<()> {
+    let actual = repository_url(remote)?;
+    let field = if actual.scheme() == "ssh" { "ssh_url_to_repo" } else { "http_url_to_repo" };
+    let expected = repository_url(text(project, field))
+        .map_err(|_| "GitLab 未返回有效的仓库克隆地址，无法验证推送目标")?;
+    let port = |u: &url::Url| u.port_or_known_default().or_else(|| (u.scheme() == "ssh").then_some(22));
+    let path = |u: &url::Url| u.path().trim_end_matches('/').strip_suffix(".git")
+        .unwrap_or(u.path().trim_end_matches('/')).to_owned();
+    if actual.scheme() != expected.scheme()
+        || actual.host_str() != expected.host_str()
+        || port(&actual) != port(&expected)
+        || path(&actual) != path(&expected)
+        || (actual.scheme() == "ssh" && actual.username() != expected.username())
     {
-        return Err("本地 origin 与 GitLab 项目不一致，拒绝推送".into());
+        return Err("origin 推送目标与 GitLab 项目克隆地址不一致，拒绝推送；请检查主机、协议、端口和项目路径".into());
     }
     Ok(())
 }
@@ -865,23 +890,28 @@ mod tests {
     use super::*;
     #[test]
     fn reject_wrong_remote() {
-        assert!(validate_remote(
-            "git@company.test:team/app.git",
-            "https://company.test",
-            "team/app"
-        )
-        .is_ok());
-        assert!(validate_remote(
-            "https://evil.test/team/app.git",
-            "https://company.test",
-            "team/app"
-        )
-        .is_err());
-        assert!(validate_remote(
-            "https://company.test/team/other.git",
-            "https://company.test",
-            "team/app"
-        )
-        .is_err());
+        let project = json!({
+            "path_with_namespace":"team/app",
+            "http_url_to_repo":"http://company.test:8980/team/app.git",
+            "ssh_url_to_repo":"git@company.test:team/app.git"
+        });
+        for remote in ["git@company.test:team/app.git", "ssh://git@company.test:22/team/app", "http://company.test:8980/team/app.git"] {
+            assert!(validate_remote(remote, &project).is_ok(), "{remote}");
+        }
+        for remote in ["git@evil.test:team/app.git", "git@company.test:team/other.git", "ssh://git@company.test:8980/team/app.git", "ssh://other@company.test/team/app.git", "http://company.test/team/app.git", "https://company.test:8980/team/app.git", "file:///team/app.git", "http://company.test:8980/team/app.git?extra=1"] {
+            assert!(validate_remote(remote, &project).is_err(), "{remote}");
+        }
+        assert!(validate_remote("git@company.test:team/app.git", &json!({})).is_err());
+    }
+    #[test]
+    fn validates_canonical_ssh_port_and_http_subpath() {
+        let project = json!({
+            "ssh_url_to_repo":"ssh://git@ssh.company.test:2222/team/app.git",
+            "http_url_to_repo":"https://company.test/gitlab/team/app.git"
+        });
+        assert!(validate_remote("ssh://git@ssh.company.test:2222/team/app.git", &project).is_ok());
+        assert!(validate_remote("git@ssh.company.test:team/app.git", &project).is_err());
+        assert!(validate_remote("https://company.test:443/gitlab/team/app", &project).is_ok());
+        assert!(validate_remote("https://company.test/team/app.git", &project).is_err());
     }
 }

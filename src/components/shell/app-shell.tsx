@@ -1,11 +1,10 @@
 import { useEffect } from "react";
-import { cn } from "@/lib/utils";
 import { useApp } from "@/store/state";
 import { toggleSidebar } from "@/store/actions";
 import { useRoute } from "@/lib/route";
 import { useMedia } from "@/lib/hooks";
 import { TitleBar } from "@/components/shell/titlebar";
-import { Sidebar, SIDEBAR_W } from "@/components/shell/sidebar";
+import { Sidebar, SidebarRail, RAIL_W, SIDEBAR_W } from "@/components/shell/sidebar";
 import { TasksView } from "@/components/views/tasks-view";
 import { Wizard } from "@/components/views/wizard";
 import { Settings } from "@/components/views/settings";
@@ -30,12 +29,13 @@ export function AppShell() {
   }, [compact]);
 
   return (
-    <div className="flex h-dvh flex-col bg-surface text-foreground">
-      <TitleBar />
+    <div className="flex h-dvh flex-col bg-background text-foreground">
+      {/* 桌面端与浏览器自带窗口标题栏，宽屏不再重复绘制；窄屏才需要顶栏来打开抽屉 */}
+      {compact && <TitleBar />}
       <div className="relative flex min-h-0 flex-1">
-        {!full && (
-          <div className="h-full shrink-0 overflow-hidden transition-[width] duration-200 ease-out" style={{ width: showInline ? SIDEBAR_W : 0 }} aria-hidden={!showInline}>
-            <div className="h-full" inert={!showInline ? ("" as any) : undefined}><Sidebar /></div>
+        {!full && !compact && (
+          <div className="h-full shrink-0 overflow-hidden border-r border-border bg-surface transition-[width] duration-200 ease-out" style={{ width: showInline ? SIDEBAR_W : RAIL_W }}>
+            {showInline ? <Sidebar /> : <SidebarRail />}
           </div>
         )}
         {showDrawer && (
@@ -46,7 +46,7 @@ export function AppShell() {
             </aside>
           </>
         )}
-        <main className={cn("min-w-0 flex-1 overflow-hidden bg-background", !full && showInline && "rounded-tl-xl border-l border-t border-border")}>
+        <main className="min-w-0 flex-1 overflow-hidden bg-background">
           {route.name === "setup" ? <Wizard /> : route.name === "prefs" ? <Settings /> : <TasksView />}
         </main>
       </div>

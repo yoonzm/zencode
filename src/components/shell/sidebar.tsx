@@ -1,18 +1,20 @@
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
-import { ChevronsUpDown, FolderGit, Inbox, RefreshCw, Search, Settings, Sparkles, User, CircleCheck, GitPullRequest, RotateCcw, Rocket } from "@/lib/icons";
+import { ChevronsUpDown, FolderGit, Inbox, Moon, Monitor, PanelLeft, PanelLeftClose, RefreshCw, Search, Settings, Sparkles, Sun, User, CircleCheck, GitPullRequest, RotateCcw, Rocket } from "@/lib/icons";
 import { useApp } from "@/store/state";
 import { PRESETS, activePreset, filterTasks, presetFilters } from "@/store/select";
-import { setFilters, setPalette, sync } from "@/store/actions";
+import { cycleTheme, setFilters, setPalette, sync, toggleSidebar } from "@/store/actions";
 import { store } from "@/store/state";
 import { navigate, useRoute } from "@/lib/route";
 import { Logo } from "@/components/logo";
 import { DropMenu } from "@/components/ui/menu";
 import { Kbd } from "@/components/ui/kbd";
+import { Tip } from "@/components/ui/tooltip";
 import { StateIcon } from "@/components/ui/status";
 import type { RunState } from "@/data/types";
 
 export const SIDEBAR_W = 264;
+export const RAIL_W = 48;
 
 function NavItem({ icon: Icon, label, count, active, onClick, mono }: { icon?: any; label: string; count?: number; active?: boolean; onClick: () => void; mono?: boolean }) {
   return (
@@ -36,6 +38,53 @@ function SectionTitle({ children }: { children: any }) {
 }
 
 const PRESET_ICON: Record<string, any> = { all: Inbox, mine: User, active: Sparkles, review: GitPullRequest, done: CircleCheck };
+
+const ICON_BTN =
+  "grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60";
+
+function ThemeButton() {
+  const theme = useApp((s) => s.theme);
+  const Icon = theme === "light" ? Sun : theme === "dark" ? Moon : Monitor;
+  const label = theme === "light" ? "浅色" : theme === "dark" ? "深色" : "跟随系统";
+  return (
+    <Tip label={`主题：${label}`} side="top">
+      <button onClick={cycleTheme} aria-label={`切换主题，当前：${label}`} className={ICON_BTN}>
+        <Icon className="size-4" />
+      </button>
+    </Tip>
+  );
+}
+
+/** 侧边栏收起后的窄栏：展开、搜索、设置、主题 */
+export function SidebarRail() {
+  const route = useRoute();
+  return (
+    <div className="app-chrome flex h-full flex-col items-center gap-1 py-2" style={{ width: RAIL_W }}>
+      <Tip label="展开侧边栏" keys={["mod", "B"]} side="right">
+        <button onClick={toggleSidebar} aria-label="展开侧边栏" className={ICON_BTN}>
+          <PanelLeft className="size-4" />
+        </button>
+      </Tip>
+      <Tip label="搜索或输入命令" keys={["mod", "K"]} side="right">
+        <button onClick={() => setPalette(true)} aria-label="打开命令面板" className={ICON_BTN}>
+          <Search className="size-4" />
+        </button>
+      </Tip>
+      <div className="flex-1" />
+      <ThemeButton />
+      <Tip label="设置" keys={["mod", ","]} side="right">
+        <button
+          onClick={() => navigate({ name: "prefs", section: "general" })}
+          aria-label="设置"
+          aria-current={route.name === "prefs" ? "page" : undefined}
+          className={cn(ICON_BTN, route.name === "prefs" && "bg-active text-foreground")}
+        >
+          <Settings className="size-4" />
+        </button>
+      </Tip>
+    </div>
+  );
+}
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const tasks = useApp((s) => s.tasks);
@@ -67,7 +116,8 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <div className="app-chrome flex h-full flex-col" style={{ width: SIDEBAR_W }}>
-      <div className="px-2 pt-1">
+      <div className="flex items-center gap-1 px-2 pt-2">
+        <div className="min-w-0 flex-1">
         <DropMenu
           buttonClassName="flex h-9 w-full items-center gap-2 rounded-md px-2 text-left outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-ring/60 data-[open]:bg-active"
           trigger={
@@ -88,6 +138,12 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             { label: "重新同步数据", icon: RotateCcw, onClick: () => sync() },
           ]}
         />
+        </div>
+        <Tip label="收起侧边栏" keys={["mod", "B"]}>
+          <button onClick={toggleSidebar} aria-label="收起侧边栏" className={ICON_BTN}>
+            <PanelLeftClose className="size-4" />
+          </button>
+        </Tip>
       </div>
 
       <div className="px-2 pt-1">
@@ -180,7 +236,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         )}
       </nav>
 
-      <div className="border-t border-border px-2 py-2">
+      <div className="flex items-center gap-1 border-t border-border px-2 py-2">
         <button
           onClick={() => {
             navigate({ name: "prefs", section: "general" });
@@ -188,7 +244,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           }}
           aria-current={route.name === "prefs" ? "page" : undefined}
           className={cn(
-            "flex h-8 w-full items-center gap-2 rounded-md px-2 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/60",
+            "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/60",
             route.name === "prefs" ? "bg-active text-foreground" : "text-muted-foreground hover:bg-hover hover:text-foreground",
           )}
         >
@@ -196,6 +252,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           <span className="flex-1 text-left">设置</span>
           <Kbd keys={["mod", ","]} />
         </button>
+        <ThemeButton />
       </div>
       {syncing && <span className="sr-only" role="status">正在同步</span>}
     </div>

@@ -167,10 +167,15 @@ impl Api {
         if response.status() == reqwest::StatusCode::NO_CONTENT {
             return Ok(json!({}));
         }
-        response
-            .json()
-            .await
-            .map_err(|e| format!("服务返回无效 JSON: {}", e.without_url()))
+        let status = response.status();
+        let path = format!("{}{}", url::Url::parse(&self.base).map(|u| u.path().to_owned()).unwrap_or_default(), route.split('?').next().unwrap_or(""));
+        let body = response.bytes().await
+            .map_err(|_| format!("读取服务响应失败（HTTP {status}，{path}）"))?;
+        if body.iter().all(u8::is_ascii_whitespace) {
+            return Err(format!("服务返回空响应（HTTP {status}，{path}），当前接口可能不受支持"));
+        }
+        serde_json::from_slice(&body)
+            .map_err(|_| format!("服务返回非 JSON 或无效 JSON（HTTP {status}，{path}）"))
     }
     /// Modern ZenTao maps /actions/comment to action::comment without changing object state.
     /// Only an absent/unsupported endpoint permits the legacy v1 fallback; auth/server failures do not.

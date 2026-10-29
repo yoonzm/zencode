@@ -84,6 +84,7 @@ export interface Run {
   files: DiffFile[];
   activity?: string;
   mr?: { iid: number; url: string };
+  writebackError?: string;
   mrBusy?: boolean;
   viewed: string[];
   unread?: boolean;

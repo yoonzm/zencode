@@ -86,8 +86,14 @@ function Actions({ task }: { task: ZTask }) {
       {s === "review" && (
         <>
           <Button variant="primary" loading={run.mrBusy} onClick={() => createMr(task.id)}>
-            <GitPullRequest />{run.mrBusy ? "正在创建 MR…" : "创建 Merge Request"}
+            <GitPullRequest />{run.mr ? (run.mrBusy ? "正在回写禅道…" : "重试禅道回写") : (run.mrBusy ? "正在创建 MR…" : "创建 Merge Request")}
           </Button>
+          {run.mr && <>
+            <Button variant="secondary" onClick={() => openExternal(run.mr!.url)}><ExternalLink />打开 MR !{run.mr.iid}</Button>
+            <Button variant="ghost" onClick={() => copyText(run.mr!.url, "已复制 MR 链接")}><Copy />复制 MR 链接</Button>
+            <span className="text-sm text-warning" role="status">MR 已创建，待回写禅道</span>
+            {run.writebackError && <p className="w-full rounded-md bg-warning/10 px-3 py-2 text-sm text-warning" role="alert">{run.writebackError}。可在禅道备注中手动粘贴 MR 链接，再点击“重试禅道回写”核验。</p>}
+          </>}
           <Button variant="secondary" onClick={() => document.getElementById("composer")?.focus()}>要求修改</Button>
           <Button variant="ghost" onClick={() => stopRun(task.id)}>丢弃</Button>
         </>

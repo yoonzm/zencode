@@ -20,9 +20,13 @@ test('upstream shell keeps one search entry and anchors settings below the scrol
  assert.equal((titlebar.match(/aria-label="打开命令面板"/g)||[]).length,1);
  assert.doesNotMatch(titlebar,/aria-label="设置"|w-56/);
  const sidebar=readFileSync('src/components/shell/sidebar.tsx','utf8');
- assert.ok(sidebar.indexOf('<Settings className=')>sidebar.indexOf('</nav>'));
+ const expandedSidebar=sidebar.slice(sidebar.indexOf('export function Sidebar('));
+ assert.ok(expandedSidebar.indexOf('<Settings className=')>expandedSidebar.indexOf('</nav>'));
  const shell=readFileSync('src/components/shell/app-shell.tsx','utf8');
  assert.match(shell,/className="h-full shrink-0 overflow-hidden/);
- assert.match(shell,/className="h-full" inert=/);
+ assert.match(shell,/compact && <TitleBar/);
+ assert.match(shell,/!full && !compact/);
+ assert.match(shell,/showInline \? <Sidebar \/> : <SidebarRail \/>/);
+ assert.match(shell,/width: showInline \? SIDEBAR_W : RAIL_W/);
  assert.match(shell,/left-0 top-10 z-50/);
 });
