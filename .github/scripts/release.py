@@ -67,7 +67,9 @@ SHA256SUMS.txt contains installer checksums.
 ''')
     gh('release', 'create', tag, '--repo', repo, '--target', commit, '--title', f'ZenCode {tag}', '--notes-file', str(notes), '--draft')
     gh('release', 'upload', tag, '--repo', repo, *map(str, files), str(checksums))
-    release = api(f'releases/tags/{tag}')
+    # The by-tag endpoint can return 404 until a draft is published and its tag exists.
+    release = next(r for r in api('releases?per_page=100') if r['tag_name'] == tag and r['draft'])
+    assert release['target_commitish'] == commit, 'Draft target mismatch'
     assert {a['name'] for a in release['assets']} == expected | {'SHA256SUMS.txt'}, 'Upload incomplete; draft retained'
     gh('release', 'edit', tag, '--repo', repo, '--draft=false')
     print(gh('release', 'view', tag, '--repo', repo, '--json', 'url,assets'))
