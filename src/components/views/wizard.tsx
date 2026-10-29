@@ -25,7 +25,7 @@ const STEPS = [
 ] as const;
 
 const BLANK: AppConfig = {
-  zentao: { baseUrl: "", edition: "biz", auth: "token", account: "", secret: "", scope: "mine", connected: false },
+  zentao: { baseUrl: "", edition: "biz", auth: "token", account: "", secret: "", scope: "mine", syncIntervalMin: 5, connected: false },
   gitlab: { baseUrl: "", token: "", targetBranch: "main", mrDraft: true, connected: false },
   codex: { cliPath: "", model: "Codex · 标准", sandbox: "workspace-write", concurrency: 3, connected: false },
   mappings: [{ id: "w1", product: "企业管理后台", repo: "", localPath: "", branch: "main", testCmd: "" }],

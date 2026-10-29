@@ -14,7 +14,7 @@ use std::{
         Arc,
     },
 };
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::{Mutex, Notify, Semaphore};
 use uuid::Uuid;
 pub type Emit = Arc<dyn Fn(&str, Value) + Send + Sync>;
 struct Job {
@@ -23,6 +23,8 @@ struct Job {
     approvals: Mutex<HashMap<String, Value>>,
     stopped: AtomicBool,
     paused: AtomicBool,
+    cancel_queue: Notify,
+    finished: Notify,
 }
 impl Job {
     fn new() -> Self {
@@ -32,6 +34,8 @@ impl Job {
             approvals: Mutex::new(HashMap::new()),
             stopped: AtomicBool::new(false),
             paused: AtomicBool::new(false),
+            cancel_queue: Notify::new(),
+            finished: Notify::new(),
         }
     }
 }
@@ -43,6 +47,7 @@ pub struct Runtime {
     jobs: Mutex<HashMap<String, Arc<Job>>>,
     slots: Arc<Semaphore>,
     syncing: AtomicBool,
+    task_mutations: Mutex<()>,
 }
 impl Runtime {
     pub fn new(root: PathBuf, emit: Emit) -> Result<Arc<Self>> {
@@ -72,6 +77,7 @@ impl Runtime {
             jobs: Mutex::new(HashMap::new()),
             slots: Arc::new(Semaphore::new(limit)),
             syncing: AtomicBool::new(false),
+            task_mutations: Mutex::new(()),
         }))
     }
     async fn persist(&self) -> Result<()> {
@@ -128,6 +134,12 @@ impl Runtime {
         .await
     }
     pub async fn call(self: &Arc<Self>, op: &str, args: Value) -> Result<Value> {
+        // A deletion must not race a sync merge, a new run, or MR submission.
+        let _mutation = if matches!(op, "sync" | "delete" | "start" | "mr") {
+            Some(self.task_mutations.lock().await)
+        } else {
+            None
+        };
         match op {
             "clearPrefs" => {
                 for service in ["zentao", "gitlab"] {
@@ -315,6 +327,28 @@ impl Runtime {
                 self.persist().await?;
                 Ok(json!(tasks))
             }
+            "delete" => {
+                let id = text(&args, "id");
+                self.task(id).await?;
+                let job = self.jobs.lock().await.get(id).cloned();
+                if let Some(job) = job {
+                    job.stopped.store(true, Ordering::SeqCst);
+                    job.cancel_queue.notify_one();
+                    if let Some(session) = job.session.lock().await.clone() {
+                        session.close().await;
+                    }
+                    tokio::time::timeout(std::time::Duration::from_secs(35), job.finished.notified())
+                        .await
+                        .map_err(|_| "执行仍在停止中，任务尚未删除，请稍后重试".to_string())?;
+                }
+                let mut data = self.data.lock().await;
+                let mut next = data.clone();
+                next["tasks"].as_array_mut().ok_or("任务数据无效")?
+                    .retain(|t| text(t, "id") != id);
+                self.storage.save(&next)?;
+                *data = next;
+                Ok(Value::Null)
+            }
             "start" => {
                 self.enqueue(
                     text(&args, "id"),
@@ -436,7 +470,10 @@ impl Runtime {
         let rt = self.clone();
         let id = id.to_owned();
         tokio::spawn(async move {
-            let _permit = rt.slots.clone().acquire_owned().await;
+            let _permit = tokio::select! {
+                permit = rt.slots.clone().acquire_owned() => Some(permit),
+                _ = job.cancel_queue.notified() => None,
+            };
             let result = rt.execute(&id, &config, &mapping, &instruction, &job).await;
             if let Some(session) = job.session.lock().await.take() {
                 session.close().await;
@@ -454,6 +491,7 @@ impl Runtime {
                 .update(&id, |t| t["run"]["finishedAt"] = json!(now()))
                 .await;
             rt.jobs.lock().await.remove(&id);
+            job.finished.notify_one();
         });
         Ok(())
     }
@@ -512,6 +550,9 @@ impl Runtime {
         let (session, mut messages) =
             Session::spawn(text(&config["codex"], "cliPath"), &cwd).await?;
         *job.session.lock().await = Some(session.clone());
+        if job.stopped.load(Ordering::SeqCst) {
+            return Err("执行已终止".into());
+        }
         session.initialize().await?;
         let sandbox = match text(&config["codex"], "sandbox") {
             "read-only" => "read-only",
@@ -860,6 +901,27 @@ pub fn validate_remote(remote: &str, project: &Value) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn delete_cancels_queued_worker_and_persists_removal() {
+        let root = tempfile::tempdir().unwrap();
+        let run = services::empty_run();
+        Storage::new(root.path()).save(&json!({"prefs":{},"tasks":[{
+            "id":"bug-1","product":"P","run":run
+        }]})).unwrap();
+        let rt = Runtime::new(root.path().into(), Arc::new(|_, _| {})).unwrap();
+        let permit = rt.slots.clone().acquire_owned().await.unwrap();
+        rt.call("start", json!({"id":"bug-1","config":{
+            "mappings":[{"product":"P"}],"codex":{}
+        }})).await.unwrap();
+        assert_eq!(rt.task("bug-1").await.unwrap()["run"]["state"], "queued");
+        tokio::time::timeout(std::time::Duration::from_secs(2), rt.call("delete", json!({"id":"bug-1"})))
+            .await.unwrap().unwrap();
+        assert!(rt.jobs.lock().await.is_empty());
+        assert!(rt.data.lock().await["tasks"].as_array().unwrap().is_empty());
+        drop(permit);
+        let recovered = Runtime::new(root.path().into(), Arc::new(|_, _| {})).unwrap();
+        assert!(recovered.data.lock().await["tasks"].as_array().unwrap().is_empty());
+    }
     #[test]
     fn reject_wrong_remote() {
         let project = json!({

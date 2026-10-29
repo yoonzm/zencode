@@ -136,6 +136,7 @@ export function ZentaoForm({ value, onChange, test, onTest, onDemo }: { value: Z
           />
         )}
       </Field>
+      <AutoSync value={value.syncIntervalMin ?? 5} onChange={(n) => onChange({ syncIntervalMin: n })} />
       <AdvancedTls checked={!!value.insecureTls} onChange={(v) => onChange({ insecureTls: v, connected: false })} test={test} />
       <TestBar onRun={onTest} state={test} />
       {onDemo && (
@@ -144,6 +145,35 @@ export function ZentaoForm({ value, onChange, test, onTest, onDemo }: { value: Z
         </button>
       )}
     </div>
+  );
+}
+
+/** 自动同步：开关 + 间隔分钟数（最小 1） */
+export const MIN_SYNC_MIN = 1;
+function AutoSync({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  const on = value >= MIN_SYNC_MIN;
+  const [text, setText] = useState(String(on ? value : 5));
+  useEffect(() => { if (on) setText(String(value)); }, [value, on]);
+  const commit = () => {
+    const n = Math.max(MIN_SYNC_MIN, Math.min(1440, Math.round(Number(text)) || MIN_SYNC_MIN));
+    setText(String(n));
+    if (on) onChange(n);
+  };
+  return (
+    <Field label="自动同步" hint={on ? `每隔 ${value} 分钟从禅道拉取一次更新，最短 ${MIN_SYNC_MIN} 分钟。窗口在后台也会同步。` : "关闭后只在你点刷新时同步。"}>
+      {({ id }) => (
+        <div className="flex items-center gap-3">
+          <Toggle checked={on} onChange={(v) => { if (v) { const n = Math.max(MIN_SYNC_MIN, Math.min(1440, Math.round(Number(text)) || 5)); setText(String(n)); onChange(n); } else onChange(0); }} label="自动同步" />
+          {on && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              每隔
+              <Input id={id} type="number" inputMode="numeric" min={MIN_SYNC_MIN} max={1440} value={text} onChange={(e: any) => setText(e.target.value)} onBlur={commit} onKeyDown={(e: any) => e.key === "Enter" && commit()} className="w-20 tabular-nums" />
+              分钟
+            </div>
+          )}
+        </div>
+      )}
+    </Field>
   );
 }
 

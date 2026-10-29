@@ -6,10 +6,12 @@ test('failed credential persistence does not retry on toast updates and supports
  const attrs=new Map();
  globalThis.document={documentElement:{getAttribute:k=>attrs.get(k),setAttribute:(k,v)=>attrs.set(k,v),removeAttribute:k=>attrs.delete(k)}};
  globalThis.localStorage={removeItem:()=>{}};
- globalThis.window={desktop:{call:async (op,args)=>{if(op==='load')return {platform:'win',prefs:{platformPref:'mac',windowControls:false},tasks:[]};if(op==='save'){saves++;savedPrefs=args;throw Error('Vault unavailable');}}},dispatchEvent:()=>true,matchMedia:()=>({matches:false})};
+ globalThis.window={desktop:{call:async (op,args)=>{if(op==='load')return {platform:'win',prefs:{platformPref:'mac',windowControls:false,config:{zentao:{baseUrl:'https://zentao.example',connected:true},gitlab:{},codex:{},mappings:[]}},tasks:[]};if(op==='save'){saves++;savedPrefs=args;throw Error('Vault unavailable');}}},dispatchEvent:()=>true,matchMedia:()=>({matches:false})};
  const result=await build({entryPoints:['src/store/state.ts'],bundle:true,write:false,format:'esm',platform:'browser',alias:{'@':`${process.cwd()}/src`},define:{'process.env.NODE_ENV':'"production"'}});
  const {store,hydrate,flushPrefs}=await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
  await hydrate();assert.equal(store.get().platform,'win');assert.equal(store.get().platformPref,undefined);assert.equal(store.get().windowControls,undefined);
+ assert.equal(store.get().config.zentao.syncIntervalMin,5);
+ assert.equal(store.get().config.zentao.baseUrl,'https://zentao.example');
  store.set({sidebarOpen:false});await assert.rejects(flushPrefs(),/Vault unavailable/);assert.equal(saves,1);assert.equal(savedPrefs.platformPref,undefined);assert.equal(savedPrefs.windowControls,undefined);
  store.set({toasts:[]});await new Promise(r=>setTimeout(r,10));assert.equal(saves,1);
  await assert.rejects(flushPrefs(),/Vault unavailable/);assert.equal(saves,2);

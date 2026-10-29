@@ -11,6 +11,44 @@ async fn server(handler: Arc<dyn Fn(&str, &str) -> (u16, Value) + Send + Sync>) 
         (status, body.to_string())
     })).await
 }
+
+#[tokio::test]
+async fn deleted_task_syncs_back_with_fresh_run_without_remote_writes() {
+    use zencode_core::{runtime::Runtime, services::empty_run, storage::Storage};
+    let base = server(Arc::new(|route, request| {
+        assert!(request.starts_with("GET "), "Local deletion must not write to ZenTao");
+        if route.starts_with("/api.php/v1/products?") {
+            (200, json!({"products":[{"id":1,"name":"P"}]}))
+        } else if route.starts_with("/api.php/v1/products/1/bugs?") {
+            (200, json!({"bugs":[{"id":7,"assignedTo":"alice"}]}))
+        } else if route.starts_with("/api.php/v1/products/1/stories?") {
+            (200, json!({"stories":[]}))
+        } else if route == "/api.php/v1/bugs/7" {
+            (200, json!({"id":7,"title":"Remote task","status":"active","assignedTo":"alice"}))
+        } else { (404, json!({})) }
+    })).await;
+    let dir = tempfile::tempdir().unwrap();
+    let retained = dir.path().join("worktree.txt");
+    std::fs::write(&retained, "existing user changes").unwrap();
+    let mut run = empty_run();
+    run["state"] = json!("done");
+    run["worktree"] = json!(retained);
+    run["branch"] = json!("old-branch");
+    run["threadId"] = json!("old-thread");
+    run["mr"] = json!({"iid":1});
+    Storage::new(dir.path()).save(&json!({"prefs":{},"tasks":[{"id":"bug-7","run":run}]})).unwrap();
+    let rt = Runtime::new(dir.path().into(), Arc::new(|_, _| {})).unwrap();
+    rt.call("delete", json!({"id":"bug-7"})).await.unwrap();
+    assert!(Storage::new(dir.path()).load().unwrap()["tasks"].as_array().unwrap().is_empty());
+    let tasks = rt.call("sync", json!({"config":{
+        "zentao":{"baseUrl":base,"auth":"token","secret":"test-token","account":"alice","scope":"mine"},
+        "mappings":[{"product":"P","repo":"team/app"}]
+    }})).await.unwrap();
+    assert_eq!(tasks.as_array().unwrap().len(), 1);
+    assert_eq!(tasks[0]["id"], "bug-7");
+    assert_eq!(tasks[0]["run"], empty_run());
+    assert_eq!(std::fs::read_to_string(retained).unwrap(), "existing user changes");
+}
 async fn raw_server(handler: Arc<dyn Fn(&str, &str) -> (u16, String) + Send + Sync>) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

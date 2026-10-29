@@ -20,5 +20,24 @@ test('real sync drives loading, empty, failure and recovery without simulation a
  assert.equal(store.get().listStatus,'error');assert.equal(store.get().syncError,'HTTP 401');
  const retry=sync();resolveSync([{id:'bug-1',description:[],run:{}}]);await retry;
  assert.equal(store.get().listStatus,'ready');assert.equal(store.get().syncError,undefined);assert.equal(store.get().tasks.length,1);
+ const toastCount=store.get().toasts.length;
+ const auto=sync({auto:true});
+ assert.equal(store.get().listStatus,'ready');
+ assert.ok(store.get().lastSyncAttempt>0);
+ await sync({auto:true}); // A second tick must not start an overlapping request.
+ rejectSync(Error('Background failure'));await auto;
+ assert.equal(store.get().listStatus,'ready');assert.equal(store.get().tasks.length,1);
+ assert.equal(store.get().toasts.length,toastCount);
+ assert.equal(store.get().syncError,'Background failure');
+ const refresh=sync({auto:true});resolveSync([{id:'bug-1',description:[],run:{}}]);await refresh;
+ assert.equal(store.get().syncError,undefined);
+ location.hash='#task-bug-1';
+ actions.deleteTask('bug-1');assert.equal(store.get().tasks.length,1);
+ const rejected=store.get().confirm.onConfirm();rejectSync(Error('Cannot delete'));await rejected;
+ assert.equal(store.get().tasks.length,1);assert.equal(location.hash,'#task-bug-1');
+ actions.deleteTask('bug-1');const deleted=store.get().confirm.onConfirm();resolveSync(null);await deleted;
+ assert.equal(store.get().tasks.length,0);assert.equal(store.get().listStatus,'empty');assert.equal(location.hash,'#tasks');
+ const resync=sync();resolveSync([{id:'bug-1',description:[],run:{state:'idle'}}]);await resync;
+ assert.equal(store.get().tasks[0].run.state,'idle');
  for(const file of ['settings','palette']) assert.doesNotMatch(readFileSync(`src/components/views/${file}.tsx`,'utf8'),/状态模拟|setListStatus|resetDemo/);
 });

@@ -1,6 +1,6 @@
 # ZenCode
 
-Tauri 2 + Rust desktop application, retaining the React / TypeScript / Tailwind 4 interface from [yoonzm/zencode-ui](https://github.com/yoonzm/zencode-ui), initial baseline `33c33acb1e557d00d4016fcb9d677cd44ff0ed88`, with UI components and MR completion behavior synchronized through `2dacbcc`. Desktop service wiring and fixes are retained; prototype simulation controls are excluded.
+Tauri 2 + Rust desktop application, retaining the React / TypeScript / Tailwind 4 interface from [yoonzm/zencode-ui](https://github.com/yoonzm/zencode-ui), initial baseline `33c33acb1e557d00d4016fcb9d677cd44ff0ed88`, with UI components and MR completion behavior synchronized through `30d9d9f`. Desktop service wiring and fixes are retained; prototype simulation controls are excluded.
 
 ## Development
 
@@ -26,6 +26,8 @@ npm run package
 - Windows credentials use Credential Manager; macOS uses Keychain through keyring. Credentials are never saved in renderer localStorage. Linux credential persistence is explicitly unsupported in this release.
 - Task state is saved in the OS application data directory, with a backup on replacement. A damaged state file is reported, not silently reset.
 - ZenTao REST v1 (`/api.php/v1`) uses token or password authentication. Synchronization only reads bugs, stories and task details for products with a configured repository mapping. Within those products, the synchronization scope selects either tasks assigned to the configured account or all assignees. The full product catalog remains available for configuring mappings.
+- Automatic ZenTao synchronization defaults to every 5 minutes, including older saved configurations without this field. Settings allow disabling it or choosing 1?1440 minutes. It continues while the window is in the background, skips setup, avoids overlapping requests and keeps the current list on background failures. Failed attempts wait for the next configured interval.
+- Deleting a task removes its local record after stopping any active or queued execution; it does not modify ZenTao. The next synchronization imports it with a fresh run. Existing worktrees and Git branches remain on disk for recovery but are not reused by the imported task.
 - Each task gets an isolated Git worktree and branch under application data. Existing user checkout changes are not discarded. Execution failures and app interruption retain the worktree and history.
 - Codex uses `app-server --listen stdio://`, thread start/resume, turn start/steer/interrupt, message streaming and command/file approval responses. “Always” currently means the current Codex session. Pause interrupts the current turn; resume creates a new turn in the same thread, not an OS process freeze.
 - Review shows a real Git diff, including new files. Clicking MR stages, commits and pushes that isolated branch, then creates/reuses the MR and marks the local run complete. Git push uses the user's configured Git credential helper/SSH, independently of the API PAT. Origin is verified against the configured GitLab project before push.

@@ -2,11 +2,11 @@ import { openExternal } from "@/store/actions";
 import { motion } from "motion/react";
 import { useEffect } from "react";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Calendar, Copy, Ellipsis, ExternalLink, GitBranch, GitMerge, GitPullRequest, Link, Pause, Play, RotateCcw, Square, TriangleAlert, Check, SearchX } from "@/lib/icons";
+import { ArrowLeft, Calendar, Copy, Ellipsis, ExternalLink, GitBranch, GitMerge, GitPullRequest, Link, Pause, Play, RotateCcw, Square, TriangleAlert, Check, SearchX, Trash } from "@/lib/icons";
 import { useApp } from "@/store/state";
 import { PRIORITY_LABEL } from "@/data/types";
 import { personName } from "@/data/identity";
-import { clearUnread, createMr, pauseRun, resumeRun, retryRun, setTab, stopRun } from "@/store/actions";
+import { clearUnread, createMr, deleteTask, pauseRun, resumeRun, retryRun, setTab, stopRun } from "@/store/actions";
 import { toast } from "@/store/toast";
 import { useNow, isTyping } from "@/lib/hooks";
 import { dueLabel, fmtDuration } from "@/lib/time";
@@ -197,6 +197,7 @@ export function TaskDetail({ id, onBack }: { id: string; onBack?: () => void }) 
                 { label: "复制分支名", icon: GitBranch, disabled: !run.branch, onClick: () => run.branch && copyText(run.branch, "已复制分支名") },
                 { label: "复制禅道链接", icon: Link, onClick: () => copyText(`${store.get().config.zentao.baseUrl}/${task.kind}-view-${task.no}.html`, "已复制禅道链接") },
                 { separator: true },
+                { label: "删除任务…", icon: Trash, danger: true, onClick: () => deleteTask(task.id) },
                 { label: "终止并丢弃本次执行…", icon: Square, danger: true, disabled: run.state === "idle", onClick: () => stopRun(task.id) },
               ]}
             />

@@ -125,6 +125,8 @@ export interface ZentaoConfig {
   account: string;
   secret: string;
   scope: "mine" | "products";
+  /** 自动同步间隔（分钟，最小 1）；0 表示只手动同步 */
+  syncIntervalMin: number;
   /** 跳过 TLS 证书验证（仅对这个服务生效） */
   insecureTls?: boolean;
   connected: boolean;

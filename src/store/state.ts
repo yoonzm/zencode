@@ -61,6 +61,7 @@ export interface AppState extends Prefs {
   syncError?: string;
   syncing: boolean;
   lastSync: number;
+  lastSyncAttempt: number;
   paletteOpen: boolean;
   shortcutsOpen: boolean;
   toasts: Toast[];
@@ -97,6 +98,7 @@ export const store = createStore<AppState>({
   listStatus: "loading",
   syncing: false,
   lastSync: 0,
+  lastSyncAttempt: 0,
   paletteOpen: false,
   shortcutsOpen: false,
   toasts: [],
@@ -119,6 +121,8 @@ export async function hydrate() {
   const data = await desktopCall("load");
   // Only supported preferences are restored; obsolete prototype platform overrides are ignored.
   const prefs = Object.fromEntries(PERSIST_KEYS.filter(k => k in (data.prefs ?? {})).map(k => [k, data.prefs[k]]));
+  const config = prefs.config ?? defaultPrefs.config;
+  prefs.config = { ...config, zentao: { ...config.zentao, syncIntervalMin: config.zentao?.syncIntervalMin ?? 5 } };
   const platform: Platform = data.platform === "mac" || data.platform === "win" ? data.platform : detectPlatform();
   store.set({ ...prefs, platform, tasks: data.tasks, listStatus: data.tasks.length ? "ready" : "empty", syncError: undefined });
   applyTheme(store.get().theme); applyPlatform(platform);

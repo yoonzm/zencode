@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useApp } from "@/store/state";
-import { toggleSidebar } from "@/store/actions";
+import { sync, toggleSidebar } from "@/store/actions";
 import { useRoute } from "@/lib/route";
 import { useMedia } from "@/lib/hooks";
 import { TitleBar } from "@/components/shell/titlebar";
@@ -28,6 +28,22 @@ export function AppShell() {
     // 仅在断点切换时执行
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [compact]);
+
+  // 定期自动同步：按设置的间隔（≥1 分钟）静默拉取；窗口在后台也照常同步
+  const everyMin = useApp((s) => (s.config.zentao.connected ? (s.config.zentao.syncIntervalMin ?? 5) : 0));
+  useEffect(() => {
+    if (!everyMin || everyMin < 1) return;
+    const ms = everyMin * 60_000;
+    const due = () => {
+      if (route.name === "setup") return;
+      const s = store.get();
+      if (Date.now() - Math.max(s.lastSync, s.lastSyncAttempt) >= ms - 500) void sync({ auto: true });
+    };
+    const h = window.setInterval(due, Math.min(ms, 15_000));
+    return () => {
+      window.clearInterval(h);
+    };
+  }, [everyMin, route.name]);
 
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">

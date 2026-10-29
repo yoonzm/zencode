@@ -41,11 +41,19 @@ export function setFilters(patch: Partial<Filters>) {
 export function resetFilters() {
   store.set({ filters: EMPTY_FILTERS });
 }
-export async function sync() {
+let taskRevision = 0;
+export async function sync(opts: { auto?: boolean } = {}) {
   if (store.get().syncing) return;
-  store.set({ syncing: true, syncError: undefined, ...(store.get().tasks.length === 0 ? { listStatus: "loading" as const } : {}) });
-  try { const tasks = await desktopCall("sync", { config: store.get().config }); store.set({ tasks: tasks.map(decodeTask), lastSync: Date.now(), listStatus: tasks.length ? "ready" : "empty" }); }
-  catch (e) { report(e); store.set({ listStatus: "error", syncError: e instanceof Error ? e.message : String(e) }); }
+  const revision = taskRevision;
+  store.set({ syncing: true, lastSyncAttempt: Date.now(), syncError: undefined, ...(!opts.auto && store.get().tasks.length === 0 ? { listStatus: "loading" as const } : {}) });
+  try {
+    const tasks = await desktopCall("sync", { config: store.get().config });
+    if (revision === taskRevision) store.set({ tasks: tasks.map(decodeTask), lastSync: Date.now(), listStatus: tasks.length ? "ready" : "empty" });
+  }
+  catch (e) {
+    if (!opts.auto) report(e);
+    store.set({ ...(!opts.auto ? { listStatus: "error" as const } : {}), syncError: e instanceof Error ? e.message : String(e) });
+  }
   finally { store.set({ syncing: false }); }
 }
 function report(e: unknown) { toast({ title: "操作未完成", desc: e instanceof Error ? e.message : String(e), tone: "danger", duration: 8000 }); }
@@ -54,6 +62,28 @@ export function startRun(id: string, instruction?: string, ref?: string) { void 
 export function pauseRun(id: string) { void runCall("pause", { id }); }
 export function resumeRun(id: string) { startRun(id); }
 export function stopRun(id: string) { askConfirm({ title: "终止本次执行？", desc: "终止 Codex 进程，保留独立工作区、改动和执行记录。", confirmLabel: "终止执行", danger: true, onConfirm: () => { void runCall("stop", { id }); } }); }
+export function deleteTask(id: string) {
+  const task = getTask(id);
+  if (!task) return;
+  askConfirm({
+    title: "删除这个任务？",
+    desc: `${task.title} 只会从 ZenCode 中删除，禅道中的任务不受影响。正在进行的执行会被终止，执行记录将从任务中移除。已有独立工作区和 Git 分支保留在磁盘，但不会复用；下次同步时此任务将从头开始。`,
+    confirmLabel: "删除",
+    danger: true,
+    onConfirm: async () => {
+      try {
+        await desktopCall("delete", { id });
+        taskRevision++;
+        store.set(s => {
+          const tasks = s.tasks.filter(t => t.id !== id);
+          return { tasks, listStatus: tasks.length ? "ready" : "empty" };
+        });
+        if (location.hash === `#task-${id}`) navigate({ name: "tasks" });
+        toast({ title: "已删除任务", desc: "下次同步会从禅道重新拉回，并从头开始。", tone: "info", action: { label: "立即同步", run: () => { void sync(); } } });
+      } catch (e) { report(e); }
+    },
+  });
+}
 export function retryRun(id: string) { startRun(id); }
 export function decideApproval(id: string, evId: string, decision: "once" | "always" | "deny") { void runCall("approve", { id, evId, decision }); }
 export function sendInstruction(id: string, text: string, ref?: string) { startRun(id, text, ref); }

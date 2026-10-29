@@ -122,6 +122,12 @@ for line in sys.stdin:
         recovered.data.lock().await["tasks"][0]["run"]["state"],
         "review"
     );
+    recovered.call("start", json!({"id":"bug-1","config":config})).await.unwrap();
+    state(&recovered, "waiting").await;
+    tokio::time::timeout(std::time::Duration::from_secs(5), recovered.call("delete", json!({"id":"bug-1"})))
+        .await.unwrap().unwrap();
+    assert!(recovered.data.lock().await["tasks"].as_array().unwrap().is_empty());
+    assert_eq!(std::fs::read_to_string(repo.join("hello.txt")).unwrap(), "original\n");
 }
 #[tokio::test]
 async fn crash_recovery_preserves_worktree() {
