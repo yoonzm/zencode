@@ -24,9 +24,9 @@ export function filterTasks(tasks: ZTask[], f: Filters): ZTask[] {
 
 export function sortTasks(tasks: ZTask[], sort: "updated" | "priority" | "deadline"): ZTask[] {
   const arr = tasks.slice();
-  if (sort === "priority") arr.sort((a, b) => a.priority - b.priority || b.updatedAt - a.updatedAt);
-  else if (sort === "deadline") arr.sort((a, b) => (a.deadline ?? Infinity) - (b.deadline ?? Infinity) || a.priority - b.priority);
-  else arr.sort((a, b) => b.updatedAt - a.updatedAt);
+  if (sort === "priority") arr.sort((a, b) => a.priority - b.priority || b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
+  else if (sort === "deadline") arr.sort((a, b) => (a.deadline ?? Infinity) - (b.deadline ?? Infinity) || a.priority - b.priority || a.id.localeCompare(b.id));
+  else arr.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
   return arr;
 }
 

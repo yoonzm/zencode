@@ -96,8 +96,14 @@ impl Runtime {
                 .and_then(|ts| ts.iter_mut().find(|t| text(t, "id") == id))
                 .ok_or("任务不存在")?;
             let old = text(&t["run"], "state").to_owned();
+            let started = t["run"]["startedAt"].clone();
+            let finished = t["run"]["finishedAt"].clone();
             f(t);
-            t["updatedAt"] = json!(now());
+            // Streaming output is activity, but must not continually reorder task lists.
+            t["lastActivityAt"] = json!(now());
+            if old != text(&t["run"], "state") || started != t["run"]["startedAt"] || finished != t["run"]["finishedAt"] {
+                t["updatedAt"] = json!(now());
+            }
             let new = text(&t["run"], "state");
             let key = match new {
                 "review" => "done",
@@ -129,6 +135,7 @@ impl Runtime {
     }
     async fn event(&self, id: &str, ev: Value) -> Result<()> {
         self.update(id, |t| {
+            if text(&ev, "kind") == "user" { t["updatedAt"] = json!(now()); }
             push_event(t, ev);
         })
         .await
@@ -302,6 +309,7 @@ impl Runtime {
                             t["id"] = previous["id"].clone();
                             t["run"] = previous["run"].clone();
                             t["updatedAt"] = json!(t["updatedAt"].as_i64().unwrap_or(0).max(previous["updatedAt"].as_i64().unwrap_or(0)));
+                            t["lastActivityAt"] = previous["lastActivityAt"].clone();
                         } else if args["config"]["zentao"]["autoRun"].as_bool().unwrap_or(true)
                             && !markers.iter().any(|m| crate::cleanup::same(m, t))
                             && args["config"]["mappings"].as_array().is_some_and(|ms|
@@ -1044,6 +1052,33 @@ mod tests {
         drop(permit);
         let recovered = Runtime::new(root.path().into(), Arc::new(|_, _| {})).unwrap();
         assert!(recovered.data.lock().await["tasks"].as_array().unwrap().is_empty());
+    }
+    #[tokio::test]
+    async fn interleaved_streams_keep_sort_time_but_track_activity() {
+        let root = tempfile::tempdir().unwrap();
+        Storage::new(root.path()).save(&json!({"prefs":{},"tasks":[
+            {"id":"bug-1","updatedAt":100,"run":services::empty_run()},
+            {"id":"bug-2","updatedAt":200,"run":services::empty_run()}
+        ]})).unwrap();
+        let rt = Runtime::new(root.path().into(), Arc::new(|_, _| {})).unwrap();
+        for t in rt.data.lock().await["tasks"].as_array_mut().unwrap() {
+            t["run"]["state"] = json!("running");
+        }
+        for _ in 0..3 {
+            for (id, stamp) in [("bug-1", 100), ("bug-2", 200)] {
+                rt.event(id, json!({"kind":"message","text":"delta"})).await.unwrap();
+                rt.update(id, |t| t["run"]["activity"] = json!("working")).await.unwrap();
+                rt.update(id, |t| t["run"]["viewed"] = json!(["file.rs"])).await.unwrap();
+                let task = rt.task(id).await.unwrap();
+                assert_eq!(task["updatedAt"], stamp);
+                assert!(task["lastActivityAt"].as_i64().unwrap() > stamp);
+            }
+        }
+        rt.event("bug-1", json!({"kind":"user","text":"follow up"})).await.unwrap();
+        assert!(rt.task("bug-1").await.unwrap()["updatedAt"].as_i64().unwrap() > 200);
+        rt.update("bug-2", |t| t["run"]["state"] = json!("review")).await.unwrap();
+        assert!(rt.task("bug-2").await.unwrap()["updatedAt"].as_i64().unwrap() > 200);
+        assert!(Storage::new(root.path()).load().unwrap()["tasks"][0]["lastActivityAt"].is_number());
     }
     #[tokio::test]
     async fn cleanup_preserves_mr_and_removes_only_owned_workspace() {

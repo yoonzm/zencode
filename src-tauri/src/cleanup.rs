@@ -10,7 +10,7 @@ pub fn closed(t: &Value) -> bool {
 }
 pub fn expired(t: &Value, cutoff: i64) -> bool {
     !matches!(text(&t["run"], "state"), "idle" | "running" | "queued" | "waiting")
-        && [t["updatedAt"].as_i64(), t["run"]["finishedAt"].as_i64(), t["run"]["startedAt"].as_i64()]
+        && [t["updatedAt"].as_i64(), t["lastActivityAt"].as_i64(), t["run"]["finishedAt"].as_i64(), t["run"]["startedAt"].as_i64()]
             .into_iter().flatten().max().is_some_and(|at| at < cutoff)
 }
 
@@ -53,6 +53,7 @@ mod tests {
         }
         assert!(expired(&json!({"updatedAt":1,"run":{"state":"failed"}}), 100));
         assert!(!expired(&json!({"updatedAt":1,"run":{"state":"failed","finishedAt":101}}), 100));
+        assert!(!expired(&json!({"updatedAt":1,"lastActivityAt":101,"run":{"state":"failed"}}), 100));
     }
     #[test]
     fn refuses_external_and_parent_paths() {

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ChevronsUpDown, Package, Inbox, Moon, Monitor, PanelLeft, PanelLeftClose, RefreshCw, Search, Settings, Sparkles, Sun, User, CircleCheck, GitPullRequest, RotateCcw, Rocket } from "@/lib/icons";
 import { useApp } from "@/store/state";
-import { PRESETS, activePreset, filterTasks, presetFilters } from "@/store/select";
+import { PRESETS, activePreset, filterTasks, presetFilters, sortTasks } from "@/store/select";
 import { cycleTheme, setFilters, setPalette, sync, toggleSidebar } from "@/store/actions";
 import { store } from "@/store/state";
 import { navigate, useRoute } from "@/lib/route";
@@ -101,9 +101,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   }, [tasks]);
   const recent = useMemo(
     () =>
-      tasks
-        .filter((t) => (["running", "waiting", "paused", "queued", "failed", "review"] as RunState[]).includes(t.run.state))
-        .sort((a, b) => b.updatedAt - a.updatedAt),
+      sortTasks(tasks.filter((t) => (["running", "waiting", "paused", "queued", "failed", "review"] as RunState[]).includes(t.run.state)), "updated"),
     [tasks],
   );
   const [showAllRecent, setShowAllRecent] = useState(false);
