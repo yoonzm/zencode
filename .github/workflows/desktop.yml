@@ -1,7 +1,6 @@
 name: Desktop installers
 on:
   push:
-    branches: [main, 'feat/**']
     tags: ['v*.*.*']
   workflow_dispatch:
 permissions:
