@@ -87,6 +87,7 @@ export interface Run {
   mrBusy?: boolean;
   viewed: string[];
   unread?: boolean;
+  cleaned?: boolean;
 }
 
 export interface ZTask {

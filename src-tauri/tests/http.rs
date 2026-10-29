@@ -49,6 +49,33 @@ async fn deleted_task_syncs_back_with_fresh_run_without_remote_writes() {
     assert_eq!(tasks[0]["run"], empty_run());
     assert_eq!(std::fs::read_to_string(retained).unwrap(), "existing user changes");
 }
+#[tokio::test]
+async fn automatic_cleanup_suppresses_closed_tasks_and_reimports_open_tasks_without_running() {
+    use zencode_core::{runtime::Runtime, storage::Storage};
+    let closed = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let remote = closed.clone();
+    let base = server(Arc::new(move |route, request| {
+        assert!(request.starts_with("GET "));
+        if route.contains("/products?") { (200, json!({"products":[{"id":1,"name":"P"}]})) }
+        else if route.contains("/products/1/bugs?") { (200, json!({"bugs":[{"id":7,"assignedTo":"alice"}]})) }
+        else if route.contains("/products/1/stories?") { (200, json!({"stories":[]})) }
+        else if route.ends_with("/bugs/7") { (200, json!({"id":7,"title":"Task","assignedTo":"alice","status":if remote.load(std::sync::atomic::Ordering::SeqCst) {"closed"} else {"active"}})) }
+        else { (404, json!({})) }
+    })).await;
+    let dir = tempfile::tempdir().unwrap();
+    Storage::new(dir.path()).save(&json!({"prefs":{},"tasks":[{"id":"bug-7","kind":"bug","no":7,"repoId":"team/app","product":"P","updatedAt":1,"run":{"state":"failed"}}]})).unwrap();
+    let rt = Runtime::new(dir.path().into(), Arc::new(|_, _| {})).unwrap();
+    rt.call("cleanup", json!({"mode":"auto","days":30})).await.unwrap();
+    let rt = Runtime::new(dir.path().into(), Arc::new(|_, _| {})).unwrap();
+    let args = json!({"config":{"zentao":{"baseUrl":base,"auth":"token","secret":"fixture","account":"alice","scope":"mine","autoRun":true},"mappings":[{"product":"P","repo":"team/app"}]}});
+    assert_eq!(rt.call("sync", args.clone()).await.unwrap(), json!([]));
+    closed.store(false, std::sync::atomic::Ordering::SeqCst);
+    for _ in 0..2 {
+        let tasks = rt.call("sync", args.clone()).await.unwrap();
+        assert_eq!(tasks.as_array().unwrap().len(), 1);
+        assert_eq!(tasks[0]["run"]["state"], "idle");
+    }
+}
 async fn raw_server(handler: Arc<dyn Fn(&str, &str) -> (u16, String) + Send + Sync>) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

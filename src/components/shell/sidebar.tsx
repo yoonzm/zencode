@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
-import { ChevronsUpDown, FolderGit, Inbox, Moon, Monitor, PanelLeft, PanelLeftClose, RefreshCw, Search, Settings, Sparkles, Sun, User, CircleCheck, GitPullRequest, RotateCcw, Rocket } from "@/lib/icons";
+import { ChevronsUpDown, Package, Inbox, Moon, Monitor, PanelLeft, PanelLeftClose, RefreshCw, Search, Settings, Sparkles, Sun, User, CircleCheck, GitPullRequest, RotateCcw, Rocket } from "@/lib/icons";
 import { useApp } from "@/store/state";
 import { PRESETS, activePreset, filterTasks, presetFilters } from "@/store/select";
 import { cycleTheme, setFilters, setPalette, sync, toggleSidebar } from "@/store/actions";
@@ -94,9 +94,9 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const syncing = useApp((s) => s.syncing);
 
   const counts = useMemo(() => Object.fromEntries(PRESETS.map((p) => [p.id, filterTasks(tasks, presetFilters(p)).length])), [tasks]);
-  const repoCounts = useMemo(() => {
+  const productCounts = useMemo(() => {
     const m = new Map<string, number>();
-    for (const t of tasks) m.set(t.repoId, (m.get(t.repoId) ?? 0) + 1);
+    for (const t of tasks) m.set(t.product, (m.get(t.product) ?? 0) + 1);
     return m;
   }, [tasks]);
   const recent = useMemo(
@@ -176,24 +176,22 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           ))}
         </div>
 
-        <SectionTitle>仓库</SectionTitle>
+        <SectionTitle>产品</SectionTitle>
         <div className="space-y-0.5">
-          {[...new Set(config.mappings.flatMap((m) => m.repos.map((r) => r.repo)))].map((repo) => {
-            const m = { id: repo, repo };
-            const on = filters.repos.length === 1 && filters.repos[0] === m.repo && route.name !== "prefs";
+          {[...new Set(config.mappings.map((m) => m.product))].map((product) => {
+            const on = filters.products.length === 1 && filters.products[0] === product && route.name !== "prefs";
             return (
               <NavItem
-                key={m.id}
-                icon={FolderGit}
-                label={m.repo.split("/")[1]}
-                count={repoCounts.get(m.repo)}
+                key={product}
+                icon={Package}
+                label={product}
+                count={productCounts.get(product)}
                 active={on}
                 onClick={() => {
-                  setFilters({ repos: on ? [] : [m.repo] });
+                  setFilters({ products: on ? [] : [product] });
                   navigate({ name: "tasks" });
                   go();
                 }}
-                mono
               />
             );
           })}

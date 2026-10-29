@@ -15,11 +15,11 @@ fn clipped(value: &Value) -> String {
     out
 }
 
-// Sample two pages per source, explicitly report limits and failures. Never silently
+// Sample four pages per source, explicitly report limits and failures. Never silently
 // turn a permission error into evidence that a product/repository has no activity.
 async fn sample(api: &Api, route: &str, key: Option<&str>, warnings: &mut Vec<String>, label: &str) -> Vec<Value> {
     let mut rows = Vec::new();
-    for page in 1..=2 {
+    for page in 1..=4 {
         let pagination = if key.is_some() { "limit" } else { "per_page" };
         let result = api.request(&format!("{route}&{pagination}=25&page={page}"), "GET", None).await;
         let data = match result {
@@ -30,7 +30,7 @@ async fn sample(api: &Api, route: &str, key: Option<&str>, warnings: &mut Vec<St
         let Some(items) = items.as_array() else { warnings.push(format!("{label}：列表格式不兼容")); break; };
         rows.extend(items.iter().take(25).cloned());
         if items.len() < 25 || data["total"].as_u64().is_some_and(|n| n <= rows.len() as u64) { break; }
-        if page == 2 { warnings.push(format!("{label}：仅分析前 50 条记录，可能还有更早记录")); }
+        if page == 4 { warnings.push(format!("{label}：仅分析前 100 条记录，可能还有更早记录")); }
     }
     rows
 }
@@ -38,13 +38,14 @@ async fn sample(api: &Api, route: &str, key: Option<&str>, warnings: &mut Vec<St
 pub async fn collect(config: &Value) -> Result<Evidence> {
     let zt = services::zentao(&config["zentao"]).await?;
     let gl = services::gitlab(&config["gitlab"])?;
-    let products = zt.pages("/products", "products").await?;
-    let projects = gl.gitlab_pages("/projects?simple=true").await?;
-    let mut evidence = Evidence { products, projects, records: vec![], warnings: vec![] };
+    let products = crate::matching_scope::assigned_products(&zt, text(&config["zentao"], "account")).await?;
+    let mut warnings = Vec::new();
+    let projects = if products.is_empty() { Vec::new() } else { crate::matching_scope::user_projects(&gl, &mut warnings).await? };
+    let mut evidence = Evidence { products, projects, records: vec![], warnings };
     for product in &evidence.products {
         let Some(id) = product["id"].as_u64().or_else(|| product["id"].as_str()?.parse().ok()) else { return Err("产品缺少有效 ID".into()); };
         for (kind, plural) in [("bug", "bugs"), ("story", "stories")] {
-            let route = format!("/products/{id}/{plural}?orderBy=id_desc{}", if kind == "story" { "&branch=all" } else { "" });
+            let route = format!("/products/{id}/{plural}?order=id_desc&status=all&branch=all");
             let label = format!("{} / {kind}", text(product, "name"));
             for (index, mut row) in sample(&zt, &route, Some(plural), &mut evidence.warnings, &label).await.into_iter().enumerate() {
                 // List endpoints may omit steps/spec. Enrich the ten newest records
@@ -87,7 +88,7 @@ pub async fn collect(config: &Value) -> Result<Evidence> {
 
 impl Evidence {
     pub fn prompt(&self) -> Result<String> {
-        let prompt = json!({"scope":"Each product: up to 50 bugs and 50 stories ordered by descending ID. Each repository: up to 50 commits across all branches, 50 updated MRs and 50 events within 90 days. Samples are not complete histories.","products":self.products.iter().map(|p| text(p,"name")).collect::<Vec<_>>(),"repos":self.projects.iter().map(|p|json!({"repo":p["path_with_namespace"],"description":clipped(&p["description"]),"lastActivityAt":p["last_activity_at"]})).collect::<Vec<_>>(),"records":self.records,"warnings":self.warnings}).to_string();
+        let prompt = json!({"scope":"Candidate products come only from current ZenTao user assigned bugs/stories, regardless of assignment date; candidate repositories come only from the GitLab token user recent events and participated MRs. Enrichment can include other contributors, do not attribute all records to the current user. Each product: up to 100 bugs and 100 stories ordered by descending ID. Each repository: up to 100 commits across all branches, 100 updated MRs and 100 events within 90 days. Samples are not complete histories.","products":self.products.iter().map(|p| text(p,"name")).collect::<Vec<_>>(),"repos":self.projects.iter().map(|p|json!({"repo":p["path_with_namespace"],"description":clipped(&p["description"]),"lastActivityAt":p["last_activity_at"]})).collect::<Vec<_>>(),"records":self.records,"warnings":self.warnings}).to_string();
         Ok(prompt)
     }
 }
@@ -109,12 +110,20 @@ mod tests {
                 let request = String::from_utf8_lossy(&bytes[..n]);
                 assert!(request.starts_with("GET "));
                 let route = request.split_whitespace().nth(1).unwrap();
-                let (status, body) = if route.starts_with("/api.php/v1/products?") {
-                    (200, json!({"products":[{"id":1,"name":"Payments"}]}))
-                } else if route.starts_with("/api/v4/projects?simple=true") {
-                    (200, json!([{"path_with_namespace":"team/pay","default_branch":"main"}]))
+                let (status, body) = if route.starts_with("/api.php/v1/user?fields=bug") {
+                    (200, json!({"profile":{"account":"alice"},"bug":{"total":1,"bugs":[{"id":42,"product":1,"assignedTo":"alice"}]}}))
+                } else if route.starts_with("/api.php/v1/user?fields=story") {
+                    (200, json!({"profile":{"account":"alice"},"story":{"total":1,"stories":[{"id":21,"product":1}]}}))
+                } else if route == "/api.php/v1/products/1" {
+                    (200, json!({"id":1,"name":"Payments"}))
+                } else if route == "/api/v4/user" {
+                    (200, json!({"id":9,"username":"different-gitlab-name"}))
+                } else if route.starts_with("/api/v4/users/9/events?") || route.starts_with("/api/v4/merge_requests?") {
+                    (200, json!([{"id":10,"project_id":8}]))
+                } else if route == "/api/v4/projects/8" {
+                    (200, json!({"id":8,"path_with_namespace":"team/pay","default_branch":"main"}))
                 } else if route.starts_with("/api.php/v1/products/1/bugs?") {
-                    assert!(route.contains("orderBy=id_desc"));
+                    assert!(route.contains("order=id_desc"));
                     (200, json!({"bugs":[{"id":42,"title":"Callback fails"}]}))
                 } else if route.starts_with("/api.php/v1/products/1/stories?") {
                     assert!(route.contains("branch=all"));
@@ -125,7 +134,8 @@ mod tests {
                     (200, json!({"spec":"Refund partial payments"}))
                 } else if route.contains("/repository/commits?") {
                     assert!(route.contains("all=true&since="));
-                    let offset = if route.contains("page=2") { 25 } else { 0 };
+                    let page: usize = route.rsplit("page=").next().unwrap().parse().unwrap();
+                    let offset = (page - 1) * 25;
                     (200, json!((0..25).map(|i| json!({"id":format!("sha{}", i + offset),"title":"Fix ZenTao BUG #42 callback","message":"Fix ZenTao BUG #42 callback signature","author_name":"Alice"})).collect::<Vec<_>>()))
                 } else if route.contains("/merge_requests?") {
                     assert!(route.contains("updated_after="));
@@ -137,12 +147,12 @@ mod tests {
             }
         });
         let evidence = collect(&json!({"zentao":{"baseUrl":base,"auth":"token","secret":"zt-secret"},"gitlab":{"baseUrl":base,"token":"gl-secret"}})).await.unwrap();
-        assert_eq!(evidence.records.len(), 53);
+        assert_eq!(evidence.records.len(), 103);
         assert!(evidence.records.iter().any(|r| r["description"] == "Callback signature is rejected"));
         assert!(evidence.records.iter().any(|r| r["description"] == "Refund partial payments"));
-        assert!(evidence.records.iter().any(|r| r["sourceId"] == "gl:team/pay:commit:\"sha49\""));
+        assert!(evidence.records.iter().any(|r| r["sourceId"] == "gl:team/pay:commit:\"sha99\""));
         assert!(evidence.warnings.iter().any(|w| w.contains("403")));
-        assert!(evidence.warnings.iter().any(|w| w.contains("50")));
+        assert!(evidence.warnings.iter().any(|w| w.contains("100")));
         let prompt = evidence.prompt().unwrap();
         assert!(!prompt.contains("zt-secret") && !prompt.contains("gl-secret"));
         assert!(!prompt.contains("baseUrl"));
@@ -156,33 +166,4 @@ mod tests {
         assert!(s.starts_with("支付"));
     }
 
-    #[tokio::test]
-    async fn catalogs_above_previous_limits_are_collected() {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        let server = tokio::spawn(async move {
-            loop {
-                let (mut socket, _) = listener.accept().await.unwrap();
-                let mut bytes = vec![0; 8192];
-                let n = socket.read(&mut bytes).await.unwrap();
-                let request = String::from_utf8_lossy(&bytes[..n]);
-                assert!(request.starts_with("GET "));
-                let route = request.split_whitespace().nth(1).unwrap();
-                let body = if route.starts_with("/api.php/v1/products?") {
-                    json!({"products":(1..=51).map(|id| json!({"id":id,"name":format!("P{id}")})).collect::<Vec<_>>()})
-                } else if route.starts_with("/api/v4/projects?simple=true") {
-                    let range = if route.contains("page=2") { 100..101 } else { 0..100 };
-                    json!(range.map(|id| json!({"path_with_namespace":format!("team/r{id}"),"default_branch":"main"})).collect::<Vec<_>>())
-                } else if route.contains("/bugs?") { json!({"bugs":[]}) }
-                else if route.contains("/stories?") { json!({"stories":[]}) }
-                else { json!([]) }.to_string();
-                socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).as_bytes()).await.unwrap();
-            }
-        });
-        let evidence = collect(&json!({"zentao":{"baseUrl":base,"auth":"token","secret":"fixture"},"gitlab":{"baseUrl":base,"token":"fixture"}})).await.unwrap();
-        assert_eq!(evidence.products.len(), 51);
-        assert_eq!(evidence.projects.len(), 101);
-        assert!(evidence.warnings.is_empty());
-        server.abort();
-    }
 }

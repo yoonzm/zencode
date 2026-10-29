@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useApp } from "@/store/state";
-import { sync, toggleSidebar } from "@/store/actions";
+import { autoCleanup, sync, toggleSidebar } from "@/store/actions";
 import { useRoute } from "@/lib/route";
 import { useMedia } from "@/lib/hooks";
 import { TitleBar } from "@/components/shell/titlebar";
@@ -40,10 +40,18 @@ export function AppShell() {
       if (Date.now() - Math.max(s.lastSync, s.lastSyncAttempt) >= ms - 500) void sync({ auto: true });
     };
     const h = window.setInterval(due, Math.min(ms, 15_000));
+    return () => window.clearInterval(h);
+  }, [everyMin, route.name]);
+
+  const cleanupDays = useApp((s) => s.cleanupDays);
+  useEffect(() => {
+    const run = () => autoCleanup(cleanupDays);
+    run();
+    const h = window.setInterval(run, 60_000);
     return () => {
       window.clearInterval(h);
     };
-  }, [everyMin, route.name]);
+  }, [cleanupDays]);
 
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">

@@ -45,7 +45,7 @@ pub async fn suggest(config: &Value, root: &Path) -> Result<Value> {
     result
 }
 
-const SCOPE: &str = "每产品最多 50 条 BUG 和 50 条需求；每仓库近 90 天最多各 50 条提交、MR 和动态。建议基于抽样记录，置信度为 AI 判断。";
+const SCOPE: &str = "候选产品来自当前禅道账号「指派给我」的 BUG／需求（不限指派日期）；候选仓库来自 GitLab 当前用户近 90 天的动态和参与的 MR。每个候选产品分析最多各 100 条 BUG／需求，每个候选仓库分析近 90 天最多各 100 条提交、MR 和动态；补充记录可能包含其他参与人，置信度为 AI 判断。";
 
 fn validate(suggestions: &Value, source: &Evidence) -> Result<Value> {
     let mut seen = HashSet::new();

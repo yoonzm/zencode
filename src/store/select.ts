@@ -13,7 +13,7 @@ export function filterTasks(tasks: ZTask[], f: Filters): ZTask[] {
     if (f.states.length && !f.states.includes(t.run.state)) return false;
     if (f.priorities.length && !f.priorities.includes(t.priority)) return false;
     if (f.assignee === "me" && t.assignee !== ME) return false;
-    if (f.repos.length && !f.repos.includes(t.repoId)) return false;
+    if (f.products.length && !f.products.includes(t.product)) return false;
     if (q) {
       const hay = `${t.kind === "bug" ? "bug" : "需求"} #${t.no} ${t.no} ${t.title} ${t.module} ${t.product} ${t.labels.join(" ")}`;
       if (!fuzzy(q, hay)) return false;
@@ -69,11 +69,11 @@ export function activePreset(f: Filters): string | null {
   const same = (a: unknown[], b: unknown[]) => a.length === b.length && a.every((x) => b.includes(x));
   for (const p of PRESETS) {
     const pf = presetFilters(p);
-    if (f.kind === pf.kind && f.assignee === pf.assignee && same(f.states, pf.states) && f.priorities.length === 0 && f.repos.length === 0 && !f.query) return p.id;
+    if (f.kind === pf.kind && f.assignee === pf.assignee && same(f.states, pf.states) && f.priorities.length === 0 && f.products.length === 0 && !f.query) return p.id;
   }
   return null;
 }
 
 export function hasActiveFilters(f: Filters): boolean {
-  return f.kind !== "all" || f.states.length > 0 || f.priorities.length > 0 || f.assignee !== "all" || f.repos.length > 0 || f.query.trim() !== "";
+  return f.kind !== "all" || f.states.length > 0 || f.priorities.length > 0 || f.assignee !== "all" || f.products.length > 0 || f.query.trim() !== "";
 }

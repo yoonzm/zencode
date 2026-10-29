@@ -8,7 +8,7 @@ import { Modal } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/fields";
 
 
-const STEPS = ["读取实际 BUG、需求及仓库提交、MR、动态，使用 Codex 分析关联"];
+const STEPS = ["从指派给我的 BUG／需求聚合产品，从 GitLab 个人活动聚合仓库，再分析关联"];
 const key = (s: AiSuggestion) => `${s.product}|${s.repo}`;
 const level = (c: number) => (c >= 0.85 ? { t: "高", cls: "bg-success/12 text-success" } : c >= 0.6 ? { t: "中", cls: "bg-warning/14 text-warning" } : { t: "低", cls: "bg-muted text-muted-foreground" });
 
@@ -56,7 +56,7 @@ export function AiMatchDialog({ open, onClose, value, onApply, config }: { confi
       open={open}
       onClose={onClose}
       title="AI 自动匹配"
-      description="对照产品的 BUG、需求与仓库近 90 天的提交、MR、活跃动态，分析编号引用、业务内容及参与人和时间的关联。应用所选后才会修改当前映射。"
+      description="仅分析「指派给我」的 BUG／需求所属产品，以及 GitLab 当前用户近 90 天参与的仓库。结合任务与提交历史给出建议，应用所选后才会修改当前映射。"
       className="sm:max-w-2xl"
       footer={
         <>

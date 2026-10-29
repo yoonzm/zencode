@@ -13,10 +13,10 @@ export interface Filters {
   states: RunState[];
   priorities: Priority[];
   assignee: "all" | "me";
-  repos: string[];
+  products: string[];
   query: string;
 }
-export const EMPTY_FILTERS: Filters = { kind: "all", states: [], priorities: [], assignee: "all", repos: [], query: "" };
+export const EMPTY_FILTERS: Filters = { kind: "all", states: [], priorities: [], assignee: "all", products: [], query: "" };
 
 export interface Toast {
   id: string;
@@ -51,6 +51,7 @@ export interface Prefs {
   sort: "updated" | "priority" | "deadline";
   setupDone: boolean;
   notify: Notify;
+  cleanupDays: number;
   config: AppConfig;
 }
 
@@ -83,6 +84,7 @@ const defaultPrefs: Prefs = {
   sort: "updated",
   setupDone: false,
   notify: { done: true, approval: true, failed: true, sound: false },
+  cleanupDays: 30,
   config: DEFAULT_CONFIG,
 };
 
@@ -114,13 +116,14 @@ export function useApp<S>(selector: (s: AppState) => S): S {
 }
 
 // ── 持久化 ────────────────────────────────────────────────
-const PERSIST_KEYS: (keyof Prefs)[] = ["theme", "density", "sidebarOpen", "listWidth", "group", "sort", "setupDone", "notify", "config"];
+const PERSIST_KEYS: (keyof Prefs)[] = ["theme", "density", "sidebarOpen", "listWidth", "group", "sort", "setupDone", "notify", "cleanupDays", "config"];
 let lastPersisted = "";
 let hydrated = false;
 export async function hydrate() {
   const data = await desktopCall("load");
   // Only supported preferences are restored; obsolete prototype platform overrides are ignored.
   const prefs = Object.fromEntries(PERSIST_KEYS.filter(k => k in (data.prefs ?? {})).map(k => [k, data.prefs[k]]));
+  prefs.cleanupDays = [7, 30, 60, 90].includes(prefs.cleanupDays) ? prefs.cleanupDays : 30;
   const config = prefs.config ?? defaultPrefs.config;
   prefs.config = { ...config, mappings: (config.mappings ?? []).map((m: any) => m.repos ? m : ({ id: m.id, product: m.product, repos: [{ id: `${m.id}-repo`, repo: m.repo ?? "", branch: m.branch ?? "", role: "", testCmd: m.testCmd ?? "" }] })), zentao: { ...config.zentao, syncIntervalMin: config.zentao?.syncIntervalMin ?? 5, autoRun: config.zentao?.autoRun ?? true } };
   const platform: Platform = data.platform === "mac" || data.platform === "win" ? data.platform : detectPlatform();

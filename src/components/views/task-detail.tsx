@@ -249,12 +249,24 @@ export function TaskDetail({ id, onBack }: { id: string; onBack?: () => void }) 
       </header>
 
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="min-h-0 flex-1">
-        {tab === "run" && <Timeline task={task} />}
-        {tab === "diff" && <DiffView task={task} />}
+        {run.cleaned && tab !== "zentao" ? (
+          <EmptyState
+            icon={Trash}
+            title="执行数据已清理"
+            desc="这个任务的执行记录、改动和工作目录已被清理。任务本身和 MR 链接都还在。"
+            actions={run.mr ? <Button variant="secondary" onClick={() => openExternal(run.mr!.url)}><GitMerge />打开 MR !{run.mr.iid}</Button> : undefined}
+            className="h-full"
+          />
+        ) : (
+          <>
+            {tab === "run" && <Timeline task={task} />}
+            {tab === "diff" && <DiffView task={task} />}
+          </>
+        )}
         {tab === "zentao" && <ZentaoTab task={task} />}
       </div>
 
-      {tab !== "zentao" && <Composer task={task} />}
+      {tab !== "zentao" && !run.cleaned && <Composer task={task} />}
     </article>
   );
 }

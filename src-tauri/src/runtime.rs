@@ -135,12 +135,13 @@ impl Runtime {
     }
     pub async fn call(self: &Arc<Self>, op: &str, args: Value) -> Result<Value> {
         // A deletion must not race a sync merge, a new run, or MR submission.
-        let _mutation = if matches!(op, "sync" | "delete" | "start" | "mr") {
+        let _mutation = if matches!(op, "sync" | "delete" | "start" | "mr" | "cleanup") {
             Some(self.task_mutations.lock().await)
         } else {
             None
         };
         match op {
+            "cleanup" => self.cleanup(&args).await,
             "clearPrefs" => {
                 for service in ["zentao", "gitlab"] {
                     if !cfg!(target_os = "linux") {
@@ -294,11 +295,15 @@ impl Runtime {
                 {
                     let mut data = self.data.lock().await;
                     let old = data["tasks"].as_array().cloned().unwrap_or_default();
+                    let markers = data["cleanupMarkers"].as_array().cloned().unwrap_or_default();
+                    tasks.retain(|t| !crate::cleanup::closed(t) || !markers.iter().any(|m| crate::cleanup::same(m, t)));
                     for t in &mut tasks {
                         if let Some(previous) = old.iter().find(|p| p["id"] == t["id"] || (p["kind"] == t["kind"] && p["no"] == t["no"] && p["repoId"] == t["repoId"])) {
                             t["id"] = previous["id"].clone();
                             t["run"] = previous["run"].clone();
+                            t["updatedAt"] = json!(t["updatedAt"].as_i64().unwrap_or(0).max(previous["updatedAt"].as_i64().unwrap_or(0)));
                         } else if args["config"]["zentao"]["autoRun"].as_bool().unwrap_or(true)
+                            && !markers.iter().any(|m| crate::cleanup::same(m, t))
                             && args["config"]["mappings"].as_array().is_some_and(|ms|
                                 ms.iter().any(|m| m["product"] == t["product"]))
                         {
@@ -328,7 +333,7 @@ impl Runtime {
             }
             "delete" => {
                 let id = text(&args, "id");
-                self.task(id).await?;
+                let deleted = self.task(id).await?;
                 let job = self.jobs.lock().await.get(id).cloned();
                 if let Some(job) = job {
                     job.stopped.store(true, Ordering::SeqCst);
@@ -344,6 +349,9 @@ impl Runtime {
                 let mut next = data.clone();
                 next["tasks"].as_array_mut().ok_or("任务数据无效")?
                     .retain(|t| text(t, "id") != id);
+                if let Some(markers) = next["cleanupMarkers"].as_array_mut() {
+                    markers.retain(|m| !crate::cleanup::same(m, &deleted));
+                }
                 self.storage.save(&next)?;
                 *data = next;
                 Ok(Value::Null)
@@ -430,6 +438,79 @@ impl Runtime {
             }
             _ => Err("不支持的操作".into()),
         }
+    }
+    async fn cleanup(&self, args: &Value) -> Result<Value> {
+        let mode = text(args, "mode");
+        if !matches!(mode, "auto" | "done" | "clear") { return Err("无效清理模式".into()); }
+        let days = args["days"].as_i64().unwrap_or(30);
+        if ![7, 30, 60, 90].contains(&days) { return Err("无效保留天数".into()); }
+        let all = args["products"] == "all";
+        let products = args["products"].as_array();
+        if mode == "clear" && !all && !products.is_some_and(|p| p.iter().all(Value::is_string)) {
+            return Err("请选择需要清理的产品".into());
+        }
+        let tasks = self.data.lock().await["tasks"].as_array().cloned().unwrap_or_default();
+        let jobs = self.jobs.lock().await;
+        let selected: Vec<Value> = tasks.iter().filter(|t| match mode {
+            "auto" => !jobs.contains_key(text(t, "id")) && crate::cleanup::expired(t, now() - days * 86_400_000),
+            "done" => !jobs.contains_key(text(t, "id")) && text(&t["run"], "state") == "done" && t["run"]["cleaned"] != true,
+            _ => all || products.is_some_and(|ps| ps.contains(&t["product"])),
+        }).cloned().collect();
+        drop(jobs);
+        // Validate every path before stopping jobs or removing any data.
+        for t in &selected {
+            crate::cleanup::workspace(&self.root, t)?;
+            let worktree = text(&t["run"], "worktree");
+            if !worktree.is_empty() && tasks.iter().any(|other| other["id"] != t["id"] && text(&other["run"], "worktree") == worktree) {
+                return Err("工作目录被多个任务引用，无法清理".into());
+            }
+        }
+        for t in &selected {
+            let job = self.jobs.lock().await.get(text(t, "id")).cloned();
+            if let Some(job) = job {
+                job.stopped.store(true, Ordering::SeqCst);
+                job.cancel_queue.notify_one();
+                if let Some(session) = job.session.lock().await.clone() { session.close().await; }
+                tokio::time::timeout(std::time::Duration::from_secs(35), job.finished.notified()).await
+                    .map_err(|_| "执行仍在停止中，尚未清理，请稍后重试".to_string())?;
+            }
+        }
+        for t in &selected {
+            // A starting job may have created its workspace while it was stopping.
+            let current = self.task(text(t, "id")).await?;
+            if let Some(path) = crate::cleanup::workspace(&self.root, &current)? {
+                std::fs::remove_dir_all(path).map_err(|e| format!("清理工作目录失败：{e}"))?;
+            }
+            let mut data = self.data.lock().await;
+            let mut next = data.clone();
+            if mode == "done" {
+                if let Some(task) = next["tasks"].as_array_mut().and_then(|ts| ts.iter_mut().find(|x| x["id"] == t["id"])) {
+                    let mr = task["run"]["mr"].clone();
+                    task["run"] = services::empty_run();
+                    task["run"]["state"] = json!("done");
+                    task["run"]["cleaned"] = json!(true);
+                    task["run"]["mr"] = mr;
+                }
+            } else {
+                next["tasks"].as_array_mut().ok_or("任务数据无效")?.retain(|x| x["id"] != t["id"]);
+                if !next["cleanupMarkers"].is_array() { next["cleanupMarkers"] = json!([]); }
+                let markers = next["cleanupMarkers"].as_array_mut().unwrap();
+                markers.retain(|m| !crate::cleanup::same(m, t));
+                if mode == "auto" { markers.push(json!({"id":t["id"],"kind":t["kind"],"no":t["no"],"repoId":t["repoId"],"product":t["product"]})); }
+            }
+            self.storage.save(&next)?;
+            *data = next;
+        }
+        if mode == "clear" {
+            let mut data = self.data.lock().await;
+            let mut next = data.clone();
+            if let Some(markers) = next["cleanupMarkers"].as_array_mut() {
+                markers.retain(|m| !all && !products.is_some_and(|ps| ps.contains(&m["product"])));
+            }
+            self.storage.save(&next)?;
+            *data = next;
+        }
+        Ok(json!({"tasks":self.data.lock().await["tasks"],"count":selected.len()}))
     }
     async fn enqueue(self: &Arc<Self>, id: &str, config: Value, instruction: String) -> Result<()> {
         let t = self.task(id).await?;
@@ -963,6 +1044,36 @@ mod tests {
         drop(permit);
         let recovered = Runtime::new(root.path().into(), Arc::new(|_, _| {})).unwrap();
         assert!(recovered.data.lock().await["tasks"].as_array().unwrap().is_empty());
+    }
+    #[tokio::test]
+    async fn cleanup_preserves_mr_and_removes_only_owned_workspace() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("worktrees").join("task-1");
+        std::fs::create_dir_all(&path).unwrap();
+        std::fs::write(path.join("changes.txt"), "changes").unwrap();
+        let original = root.path().join("original");
+        std::fs::create_dir_all(&original).unwrap();
+        Storage::new(root.path()).save(&json!({"prefs":{},"tasks":[{
+            "id":"bug-1","no":1,"kind":"bug","repoId":"repo","product":"P","updatedAt":1,
+            "run":{"state":"done","worktree":path,"repo":original,"events":[1],"mr":{"iid":7}}
+        }]})).unwrap();
+        let rt = Runtime::new(root.path().into(), Arc::new(|_, _| {})).unwrap();
+        let result = rt.call("cleanup", json!({"mode":"done"})).await.unwrap();
+        assert_eq!(result["count"], 1);
+        assert!(!path.exists());
+        assert!(original.exists());
+        let task = rt.task("bug-1").await.unwrap();
+        assert_eq!(task["run"]["mr"]["iid"], 7);
+        assert_eq!(task["run"]["cleaned"], true);
+        assert_eq!(task["run"]["events"], json!([]));
+        assert_eq!(rt.call("cleanup", json!({"mode":"done"})).await.unwrap()["count"], 0);
+        rt.call("cleanup", json!({"mode":"auto","days":30})).await.unwrap();
+        let restored = Runtime::new(root.path().into(), Arc::new(|_, _| {})).unwrap();
+        assert_eq!(restored.data.lock().await["cleanupMarkers"][0]["no"], 1);
+        assert!(restored.task("bug-1").await.is_err());
+        assert!(restored.call("cleanup", json!({"mode":"clear"})).await.is_err());
+        restored.call("cleanup", json!({"mode":"clear","products":"all"})).await.unwrap();
+        assert_eq!(restored.data.lock().await["cleanupMarkers"], json!([]));
     }
     #[test]
     fn reject_wrong_remote() {

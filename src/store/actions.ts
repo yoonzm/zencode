@@ -43,7 +43,7 @@ export function resetFilters() {
 }
 let taskRevision = 0;
 export async function sync(opts: { auto?: boolean } = {}) {
-  if (store.get().syncing) return;
+  if (store.get().syncing || cleaning) return;
   const revision = taskRevision;
   store.set({ syncing: true, lastSyncAttempt: Date.now(), syncError: undefined, ...(!opts.auto && store.get().tasks.length === 0 ? { listStatus: "loading" as const } : {}) });
   try {
@@ -57,6 +57,34 @@ export async function sync(opts: { auto?: boolean } = {}) {
   finally { store.set({ syncing: false }); }
 }
 function report(e: unknown) { toast({ title: "操作未完成", desc: e instanceof Error ? e.message : String(e), tone: "danger", duration: 8000 }); }
+export const cleanable = (t: ZTask) => t.run.state === "done" && !t.run.cleaned;
+let cleaning = false;
+async function cleanup(mode: "auto" | "done" | "clear", products: string[] | "all" = "all", days = 30) {
+  if (cleaning || (mode === "auto" && (store.get().syncing || store.get().listStatus === "loading" || location.hash === "#setup"))) return false;
+  cleaning = true;
+  taskRevision++;
+  try {
+    const result = await desktopCall("cleanup", { mode, products, days });
+    if (result.count || mode !== "auto") store.set({ tasks: result.tasks.map(decodeTask), listStatus: result.tasks.length ? "ready" : "empty" });
+    if (location.hash.startsWith("#task-") && !result.tasks.some((t: ZTask) => `#task-${t.id}` === location.hash)) navigate({ name: "tasks" });
+    if (result.count || mode !== "auto") toast({ title: result.count ? `已清理 ${result.count} 个任务的数据` : "没有可清理的数据", tone: "success" });
+    return true;
+  } catch (e) { report(e); return false; }
+  finally { cleaning = false; }
+}
+export function autoCleanup(days: number) { return cleanup("auto", "all", days); }
+export function cleanDoneRuns() { return cleanup("done"); }
+export function applyClear(products: string[] | "all") { return cleanup("clear", products); }
+export function describeClear(products: string[] | "all") {
+  const tasks = store.get().tasks.filter(t => products === "all" || products.includes(t.product));
+  const active = tasks.filter(t => ["queued", "running", "waiting", "paused"].includes(t.run.state)).length;
+  return { count: tasks.length, notes: [
+    "禅道里的任务不受影响，下次同步会作为新任务重新出现。",
+    active ? `其中 ${active} 个正在进行的任务会被终止。` : "",
+    tasks.some(t => t.run.mr) ? "GitLab 上的 MR 保留，本地会失去对应关系。" : "",
+    (store.get().config.zentao.autoRun ?? true) ? "同步后自动执行已开启，手动清除的任务重新同步后会自动执行。" : "",
+  ].filter(Boolean) };
+}
 function runCall(op: string, args: object) { return desktopCall(op, { ...args, config: store.get().config }).catch(report); }
 export function startRun(id: string, instruction?: string, ref?: string) { void runCall("start", { id, instruction: [ref, instruction].filter(Boolean).join("\n") }); }
 export function pauseRun(id: string) { void runCall("pause", { id }); }

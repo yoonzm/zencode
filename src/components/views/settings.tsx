@@ -1,16 +1,17 @@
 import { flushPrefs } from "@/store/state";
 import { desktopCall } from "@/lib/desktop";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Bell, Check, Cpu, FolderGit, GitBranch, Info, Keyboard, Palette, Plug, Rocket, RotateCcw, Sliders, Trash, ListChecks, ChevronLeft, Moon, Sun, Monitor } from "@/lib/icons";
 import type { AppConfig } from "@/data/types";
 import { store, useApp, type Notify, type ThemePref } from "@/store/state";
-import { askConfirm, sync, setTheme } from "@/store/actions";
+import { applyClear, cleanDoneRuns, cleanable, describeClear, askConfirm, sync, setTheme } from "@/store/actions";
 import { toast } from "@/store/toast";
 import { navigate, useRoute } from "@/lib/route";
 import { useMedia } from "@/lib/hooks";
 import { Button } from "@/components/ui/button";
-import { Segmented, Toggle } from "@/components/ui/fields";
+import { Checkbox, Segmented, Toggle } from "@/components/ui/fields";
+import { Modal } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
 import { CodexForm, GitlabForm, ZentaoForm } from "@/components/forms/config-forms";
 import { useConnTest } from "@/components/forms/conn-test";
@@ -225,11 +226,113 @@ function Shortcuts() {
   );
 }
 
+type ClearScope = "done" | "products" | "all";
+
+/** 清除任务数据：先选范围，再确认。只动本地数据，禅道里的任务不受影响。 */
+function ClearDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const tasks = useApp((s) => s.tasks);
+  const [scope, setScope] = useState<ClearScope>("done");
+  const [busy, setBusy] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
+  useEffect(() => { if (open) { setScope("done"); setPicked([]); } }, [open]);
+
+  const products = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const t of tasks) m.set(t.product, (m.get(t.product) ?? 0) + 1);
+    return [...m.entries()];
+  }, [tasks]);
+  const doneCount = tasks.filter(cleanable).length;
+  const target: string[] | "all" = scope === "all" ? "all" : picked;
+  const info = scope === "done" ? null : describeClear(target);
+  const n = info?.count ?? 0;
+
+  const OPTS: { id: ClearScope; title: string; desc: string; disabled?: boolean }[] = [
+    { id: "done", title: "已提交任务的执行数据", desc: doneCount ? `${doneCount} 个任务。清理执行记录、改动和工作目录，保留任务和 MR 链接。` : "没有可清理的数据。", disabled: !doneCount },
+    { id: "products", title: "指定产品的任务", desc: "清除所选产品下的全部本地任务，包括执行记录和分支信息。" },
+    { id: "all", title: "全部本地任务", desc: `${tasks.length} 个任务。影响最大，请谨慎。`, disabled: !tasks.length },
+  ];
+  const canConfirm = scope === "done" ? doneCount > 0 : n > 0;
+
+  return (
+    <Modal
+      open={open}
+      onClose={() => { if (!busy) onClose(); }}
+      title="清除任务数据"
+      description="选择清除范围。只影响本机数据，禅道里的任务不受影响。"
+      className="sm:max-w-lg"
+      footer={
+        <>
+          <Button variant="ghost" disabled={busy} onClick={onClose}>取消</Button>
+          <Button
+            variant={scope === "done" ? "primary" : "danger"}
+            disabled={!canConfirm || busy}
+            onClick={async () => { setBusy(true); try { if (await (scope === "done" ? cleanDoneRuns() : applyClear(target))) onClose(); } finally { setBusy(false); } }}
+          >
+            {scope === "done" ? "清理执行数据" : n ? `清除 ${n} 个任务` : "清除"}
+          </Button>
+        </>
+      }
+    >
+      <div role="radiogroup" aria-label="清除范围" className="space-y-2">
+        {OPTS.map((o) => {
+          const on = scope === o.id;
+          return (
+            <div key={o.id} className={cn("rounded-lg border transition-colors", on ? "border-accent bg-accent/5" : "border-border", o.disabled && "opacity-50")}>
+              <button type="button" role="radio" aria-checked={on} disabled={o.disabled} onClick={() => setScope(o.id)} className="flex w-full items-start gap-2.5 rounded-lg px-3 py-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/60">
+                <span className={cn("mt-1 grid size-4 shrink-0 place-items-center rounded-full border", on ? "border-accent" : "border-border-strong")}>{on && <span className="size-2 rounded-full bg-accent" />}</span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-foreground">{o.title}</span>
+                  <span className="block text-xs leading-5 text-muted-foreground">{o.desc}</span>
+                </span>
+              </button>
+              {on && o.id === "products" && (
+                <div className="space-y-1.5 border-t border-border px-3 py-2.5 pl-9">
+                  {products.map(([p, c]) => (
+                    <Checkbox key={p} checked={picked.includes(p)} onChange={(v) => setPicked((x) => (v ? [...x, p] : x.filter((y) => y !== p)))} label={<span>{p}<span className="ml-1.5 text-xs text-muted-foreground">{c} 个任务</span></span>} />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {info && info.count > 0 && (
+        <ul className="mt-3 list-disc space-y-0.5 rounded-lg bg-muted/60 py-2.5 pl-7 pr-3 text-xs leading-5 text-muted-foreground">
+          <li>将清除 {info.count} 个任务及其执行记录、改动和分支信息。</li>
+          {info.notes.map((t) => <li key={t}>{t}</li>)}
+        </ul>
+      )}
+    </Modal>
+  );
+}
+
+/** 任务数据：自动清理保留天数（7/30/60/90，不可关闭）+ 一个“清除”入口。 */
+function TaskData() {
+  const days = useApp((s) => s.cleanupDays);
+  const [open, setOpen] = useState(false);
+  return (
+    <section>
+      <h3 className="mb-1 text-sm font-medium text-foreground">任务数据</h3>
+      <p className="mb-2 text-xs leading-5 text-muted-foreground">只影响本机数据，禅道里的任务不受影响。</p>
+      <Group>
+        <Row title="自动清理" desc={`超过 ${days} 天没有活动的任务，会从本地清除（含执行记录和工作目录）。`}>
+          <Segmented label="保留天数" value={String(days)} onChange={(v) => store.set({ cleanupDays: Number(v) })} options={[7, 30, 60, 90].map((n) => ({ value: String(n), label: `${n} 天` }))} />
+        </Row>
+        <Row title="清除任务数据" desc="按范围手动清除。">
+          <Button variant="danger-ghost" onClick={() => setOpen(true)}><Trash />清除</Button>
+        </Row>
+      </Group>
+      <ClearDialog open={open} onClose={() => setOpen(false)} />
+    </section>
+  );
+}
+
 function Advanced() {
   return (
     <div className="space-y-6">
+      <TaskData />
       <section>
-        <h3 className="mb-2 text-sm font-medium text-foreground">数据</h3>
+        <h3 className="mb-2 text-sm font-medium text-foreground">账号与配置</h3>
         <Group>
           <Row title="重新同步数据" desc="重新从禅道读取任务，保留本地执行记录。"><Button onClick={() => void sync()}><RotateCcw />同步</Button></Row>
           <Row title="重新运行配置向导" desc="从头走一遍首次配置流程。"><Button onClick={() => navigate({ name: "setup" })}><Rocket />打开向导</Button></Row>

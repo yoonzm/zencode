@@ -68,7 +68,6 @@ function FilterChip<T extends string | number>({ label, options, value, onChange
 
 const TaskRow = memo(function TaskRow({ t, selected, compact, now }: { t: ZTask; selected: boolean; compact: boolean; now: number }) {
   const due = t.deadline && !["done"].includes(t.run.state) ? dueLabel(t.deadline, now) : null;
-  const repoName = t.repoId.split("/")[1];
   return (
     <button
       role="option"
@@ -89,8 +88,6 @@ const TaskRow = memo(function TaskRow({ t, selected, compact, now }: { t: ZTask;
         {!compact && (
           <span className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
             <span className="truncate">{t.product} · {t.module}</span>
-            <span aria-hidden>·</span>
-            <span className="font-mono">{repoName}</span>
             {due && (
               <>
                 <span aria-hidden>·</span>
@@ -215,7 +212,7 @@ export function TaskListPane({ className }: { className?: string }) {
     { label: "舒适（两行）", icon: Rows, checked: density === "comfortable", onClick: () => store.set({ density: "comfortable" }) },
   ];
 
-  const repoOptions = [...new Set(config.mappings.flatMap((m) => m.repos.map((r) => r.repo)))].map((repo) => ({ value: repo, label: repo.split("/").at(-1) || repo }));
+  const productOptions = [...new Set(config.mappings.map((m) => m.product))].map((p) => ({ value: p, label: p }));
 
   let body: any;
   if (status === "loading") body = <ListSkeleton />;
@@ -360,7 +357,7 @@ export function TaskListPane({ className }: { className?: string }) {
           onChange={(v) => setFilters({ assignee: v.length ? "me" : "all" })}
           options={[{ value: "me", label: "只看我的", icon: <Avatar id="me" size={14} /> }]}
         />
-        <FilterChip<string> label="仓库" value={filters.repos} onChange={(repos) => setFilters({ repos })} options={repoOptions} />
+        <FilterChip<string> label="产品" value={filters.products} onChange={(products) => setFilters({ products })} options={productOptions} />
         {active && (
           <button onClick={resetFilters} className="ml-auto shrink-0 rounded-md px-1.5 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60">
             清除
