@@ -105,13 +105,35 @@ pub struct Api {
     pub secret: String,
     client: reqwest::Client,
 }
+fn connection_error(error: reqwest::Error) -> String {
+    // Inspect causes without exposing URLs, headers or credentials in the message.
+    let mut cause = std::error::Error::source(&error);
+    while let Some(source) = cause {
+        let message = source.to_string().to_lowercase();
+        if message.contains("certificate") || message.contains("unknownissuer") {
+            return "证书验证失败。请检查服务证书或导入公司根证书，也可在上方「高级」里为这个连接跳过证书验证。".into();
+        }
+        cause = source.source();
+    }
+    format!("服务连接失败：{}", error.without_url())
+}
 impl Api {
     pub fn new(base: &str, prefix: &str, header: &str, secret: &str) -> Result<Self> {
+        Self::with_tls(base, prefix, header, secret, false)
+    }
+    pub fn with_tls(
+        base: &str,
+        prefix: &str,
+        header: &str,
+        secret: &str,
+        insecure_tls: bool,
+    ) -> Result<Self> {
         Ok(Self {
             base: base_url(base)? + prefix,
             header: header.into(),
             secret: secret.into(),
             client: reqwest::Client::builder()
+                .danger_accept_invalid_certs(insecure_tls)
                 .timeout(Duration::from_secs(30))
                 .redirect(reqwest::redirect::Policy::none())
                 .build()
@@ -134,7 +156,7 @@ impl Api {
         let response = request
             .send()
             .await
-            .map_err(|e| format!("服务连接失败：{}", e.without_url()))?;
+            .map_err(connection_error)?;
         if !response.status().is_success() {
             return Err(format!(
                 "服务请求失败 HTTP {} ({})",
@@ -186,7 +208,7 @@ impl Api {
             .header(&self.header, &self.secret)
             .send()
             .await
-            .map_err(|e| e.without_url().to_string())?;
+            .map_err(connection_error)?;
         if !response.status().is_success() {
             return Err(format!("附件下载失败 HTTP {}", response.status()));
         }
@@ -240,11 +262,12 @@ impl Api {
     }
 }
 pub async fn zentao(c: &Value) -> Result<Api> {
-    let mut api = Api::new(
+    let mut api = Api::with_tls(
         text(c, "baseUrl"),
         "/api.php/v1",
         "Token",
         text(c, "secret"),
+        c["insecureTls"].as_bool().unwrap_or(false),
     )?;
     if text(c, "auth") == "password" {
         api.secret.clear();
@@ -263,11 +286,12 @@ pub async fn zentao(c: &Value) -> Result<Api> {
     Ok(api)
 }
 pub fn gitlab(c: &Value) -> Result<Api> {
-    Api::new(
+    Api::with_tls(
         text(c, "baseUrl"),
         "/api/v4",
         "PRIVATE-TOKEN",
         text(c, "token"),
+        c["insecureTls"].as_bool().unwrap_or(false),
     )
 }
 pub fn empty_run() -> Value {

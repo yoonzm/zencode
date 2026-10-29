@@ -125,6 +125,8 @@ export interface ZentaoConfig {
   account: string;
   secret: string;
   scope: "mine" | "products";
+  /** 跳过 TLS 证书验证（仅对这个服务生效） */
+  insecureTls?: boolean;
   connected: boolean;
 }
 export interface GitlabConfig {
@@ -132,6 +134,7 @@ export interface GitlabConfig {
   token: string;
   targetBranch: string;
   mrDraft: boolean;
+  insecureTls?: boolean;
   connected: boolean;
 }
 export interface CodexConfig {

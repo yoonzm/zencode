@@ -39,7 +39,8 @@ export function useConnTest(kind: TestKind) {
     const steps = [{ label: kind === "codex" ? "读取 CLI 版本与登录状态" : "验证凭据并读取服务数据", state: "running" as StepState }];
     setState({ status: "running", steps });
     try {
-      const message = await desktopCall("test", { kind, config: cfg });
+      const result = await desktopCall("test", { kind, config: cfg });
+      const message = `${result}${kind !== "codex" && (cfg as ZentaoConfig | GitlabConfig).insecureTls ? " · 已跳过证书验证" : ""}`;
       if (token.current !== mine) return false;
       setState({ status: "ok", steps: steps.map(s => ({ ...s, state: "ok" })), message });
       return true;

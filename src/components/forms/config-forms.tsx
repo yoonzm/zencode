@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { cn } from "@/lib/utils";
-import { Eye, EyeOff, ShieldAlert, ShieldCheck, Wand, Minus, Plus } from "@/lib/icons";
+import { ChevronRight, Eye, EyeOff, ShieldAlert, ShieldCheck, Wand, Minus, Plus } from "@/lib/icons";
 import type { CodexConfig, GitlabConfig, SandboxMode, ZentaoConfig } from "@/data/types";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Segmented, Select, Toggle } from "@/components/ui/fields";
@@ -33,6 +33,47 @@ function TestBar({ onRun, state, label = "测试连接" }: { onRun: () => void; 
         {state.status === "ok" && <span className="text-sm text-success">连接成功</span>}
       </div>
       <ConnTestPanel state={state} />
+    </div>
+  );
+}
+
+
+/** 高级：跳过 TLS 证书验证。证书类错误出现时自动展开。 */
+function AdvancedTls({ checked, onChange, test }: { checked: boolean; onChange: (v: boolean) => void; test: TestState }) {
+  const certError = test.status === "error" && /证书/.test(test.message ?? "");
+  const [shown, setOpen] = useState(checked || certError);
+  const panelId = useId();
+  useEffect(() => { if (checked || certError) setOpen(true); }, [checked, certError]);
+  return (
+    <div className="rounded-lg border border-border">
+      <button
+        type="button"
+        onClick={() => setOpen(!shown)}
+        aria-expanded={shown}
+        aria-controls={panelId}
+        className="flex h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium text-foreground outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-ring/60"
+      >
+        <ChevronRight className={cn("size-4 text-muted-foreground transition-transform", shown && "rotate-90")} />
+        高级
+        {checked && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-warning/15 px-1.5 text-xs font-medium text-warning"><ShieldAlert className="size-3" />已跳过证书验证</span>}
+      </button>
+      {shown && (
+        <div id={panelId} className="space-y-3 border-t border-border px-3 py-3">
+          <div className="flex items-start gap-3">
+            <Toggle checked={checked} onChange={onChange} label="跳过证书验证" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-foreground">跳过证书验证</p>
+              <p className="mt-0.5 text-xs leading-5 text-muted-foreground">内网服务使用自签名证书或私有 CA 时，可以只对这个服务的 API 连接关闭校验。其他连接不受影响，Git 推送仍使用本机 Git 的证书设置。</p>
+            </div>
+          </div>
+          {checked && (
+            <p className="flex items-start gap-2 rounded-md bg-warning/10 px-2.5 py-2 text-xs leading-5 text-warning" role="note">
+              <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
+              关闭后无法确认对方就是你的服务器，账号、密码和令牌有被截获的风险。建议只在可信的内网使用，并尽快改为导入公司根证书。
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -95,6 +136,7 @@ export function ZentaoForm({ value, onChange, test, onTest, onDemo }: { value: Z
           />
         )}
       </Field>
+      <AdvancedTls checked={!!value.insecureTls} onChange={(v) => onChange({ insecureTls: v, connected: false })} test={test} />
       <TestBar onRun={onTest} state={test} />
       {onDemo && (
         <button type="button" onClick={onDemo} className="inline-flex items-center gap-1.5 rounded-sm text-sm text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/60">
@@ -129,6 +171,7 @@ export function GitlabForm({ value, onChange, test, onTest, onDemo }: { value: G
           )}
         </Field>
       </div>
+      <AdvancedTls checked={!!value.insecureTls} onChange={(v) => onChange({ insecureTls: v, connected: false })} test={test} />
       <TestBar onRun={onTest} state={test} />
       {onDemo && (
         <button type="button" onClick={onDemo} className="inline-flex items-center gap-1.5 rounded-sm text-sm text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/60">

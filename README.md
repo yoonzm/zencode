@@ -1,6 +1,6 @@
 # ZenCode
 
-Tauri 2 + Rust desktop application, retaining the React / TypeScript / Tailwind 4 interface from [yoonzm/zencode-ui](https://github.com/yoonzm/zencode-ui), initial baseline `33c33acb1e557d00d4016fcb9d677cd44ff0ed88`, with shell/settings layout changes selectively synchronized through `c361fc7c09955672062ac6325497f4758ebe7270`. Desktop service wiring and fixes are retained; prototype simulation controls are excluded.
+Tauri 2 + Rust desktop application, retaining the React / TypeScript / Tailwind 4 interface from [yoonzm/zencode-ui](https://github.com/yoonzm/zencode-ui), initial baseline `33c33acb1e557d00d4016fcb9d677cd44ff0ed88`, with shell/settings and per-connection TLS controls selectively synchronized through `e6dd0a7`. Desktop service wiring and fixes are retained; prototype simulation controls are excluded.
 
 ## Development
 
@@ -21,6 +21,7 @@ npm run package
 ## Runtime
 
 - Native OS window decorations provide the window controls. Platform appearance and shortcut labels follow the actual runtime platform; prototype platform overrides are no longer restored.
+- ZenTao and GitLab each offer an opt-in **Advanced > Skip certificate verification** setting (off by default). It applies only to that service's API client, including authentication, synchronization, attachments and MR API/writeback requests. Certificate failures reveal the setting; successful tests identify when verification was skipped. Git push retains the local Git TLS configuration. No global TLS or Git settings are changed.
 - Rust performs HTTP requests, Git operations and the Codex app-server JSON-RPC protocol. There is no bundled Node/Electron server.
 - Windows credentials use Credential Manager; macOS uses Keychain through keyring. Credentials are never saved in renderer localStorage. Linux credential persistence is explicitly unsupported in this release.
 - Task state is saved in the OS application data directory, with a backup on replacement. A damaged state file is reported, not silently reset.
