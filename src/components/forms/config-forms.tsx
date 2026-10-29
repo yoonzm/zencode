@@ -123,7 +123,7 @@ export function ZentaoForm({ value, onChange, test, onTest, onDemo }: { value: Z
           {({ id }) => <SecretInput id={id} value={value.secret} onChange={(v: string) => onChange({ secret: v, connected: false })} placeholder={value.auth === "token" ? "在禅道个人中心生成" : "••••••••"} />}
         </Field>
       </div>
-      <Field label="同步范围" hint="控制哪些任务出现在列表里。之后可以随时修改。">
+      <Field label="同步范围" hint="仅同步已配置仓库映射的产品；在这些产品内按负责人筛选任务。">
         {() => (
           <Segmented
             label="同步范围"
@@ -131,7 +131,7 @@ export function ZentaoForm({ value, onChange, test, onTest, onDemo }: { value: Z
             onChange={(scope) => onChange({ scope })}
             options={[
               { value: "mine", label: "只同步指派给我的" },
-              { value: "products", label: "所选产品下的全部" },
+              { value: "products", label: "已映射产品下的全部" },
             ]}
           />
         )}

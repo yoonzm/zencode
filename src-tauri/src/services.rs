@@ -375,7 +375,7 @@ pub async fn sync(config: &Value) -> Result<(Vec<Value>, Vec<String>)> {
             .and_then(|ms| ms.iter().find(|m| m["product"] == product["name"]))
             .cloned()
             .unwrap_or(Value::Null);
-        if text(&config["zentao"], "scope") == "products" && mapping.is_null() {
+        if mapping.is_null() {
             continue;
         }
         for (kind, plural) in [("bug", "bugs"), ("story", "stories")] {

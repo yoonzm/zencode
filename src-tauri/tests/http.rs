@@ -43,6 +43,52 @@ async fn sync_uses_token_and_filters_real_assignee() {
     assert!(!calls.lock().unwrap().iter().any(|p| p.ends_with("/8")));
 }
 #[tokio::test]
+async fn sync_always_limits_products_and_applies_assignee_scope() {
+    let calls = Arc::new(Mutex::new(vec![]));
+    let log = calls.clone();
+    let base = server(Arc::new(move |route, _| {
+        log.lock().unwrap().push(route.to_string());
+        if route.starts_with("/api.php/v1/products?") {
+            return (200, json!({"products":[{"id":1,"name":"Mapped"},{"id":2,"name":"Unmapped"}]}));
+        }
+        for (plural, first) in [("bugs", 7), ("stories", 9)] {
+            if route.starts_with(&format!("/api.php/v1/products/1/{plural}?")) {
+                return (200, json!({plural:[{"id":first,"assignedTo":{"account":"alice"}},{"id":first+1,"assignedTo":"bob"}]}));
+            }
+            for (id, account) in [(first, "alice"), (first + 1, "bob")] {
+                if route == format!("/api.php/v1/{plural}/{id}") {
+                    return (200, json!({"id":id,"title":"Task","assignedTo":account}));
+                }
+            }
+        }
+        (404, json!({}))
+    })).await;
+    for scope in ["mine", "products"] {
+        for mapped in [true, false] {
+            calls.lock().unwrap().clear();
+            let config = json!({
+                "zentao":{"baseUrl":base,"auth":"token","secret":"fixture","account":"alice","scope":scope},
+                "mappings":if mapped {json!([{"product":"Mapped","repo":"team/app"}])} else {json!([])}
+            });
+            let (tasks, products) = sync(&config).await.unwrap();
+            assert_eq!(products, vec!["Mapped", "Unmapped"]);
+            assert_eq!(tasks.len(), if !mapped {0} else if scope == "mine" {2} else {4});
+            assert!(tasks.iter().all(|t| t["repoId"] == "team/app"));
+            let calls = calls.lock().unwrap();
+            assert!(!calls.iter().any(|p| p.contains("/products/2/")));
+            if !mapped {
+                assert_eq!(calls.len(), 1, "No mappings must not request any task lists or details");
+            } else if scope == "mine" {
+                assert!(!calls.iter().any(|p| p.ends_with("/8") || p.ends_with("/10")));
+                assert!(tasks.iter().all(|t| t["assignee"] == "me"));
+            } else {
+                assert!(calls.iter().any(|p| p.ends_with("/8")));
+                assert!(calls.iter().any(|p| p.ends_with("/10")));
+            }
+        }
+    }
+}
+#[tokio::test]
 async fn paginate_and_reject_http_auth_failure() {
     let base=server(Arc::new(|route,_|{if route.contains("denied"){(401,json!({"token":"must-not-leak"}))}else if route.contains("page=1&"){(200,json!({"products":(0..100).map(|i|json!({"id":i})).collect::<Vec<_>>(),"total":101}))}else{(200,json!({"products":[{"id":100}],"total":101}))}})).await;
     let api = Api::new(&base, "", "Token", "secret").unwrap();
