@@ -67,7 +67,7 @@ function DetailEmpty() {
         )}
         <ul className="mt-6 space-y-2 text-sm text-muted-foreground">
           <li className="flex items-center justify-between gap-6"><span>上一个 / 下一个任务</span><span className="flex gap-1"><Kbd keys={["K"]} /><Kbd keys={["J"]} /></span></li>
-          <li className="flex items-center justify-between gap-6"><span>切换 执行 / 变更 / 禅道原文</span><span className="flex gap-1"><Kbd keys={["1"]} /><Kbd keys={["2"]} /><Kbd keys={["3"]} /></span></li>
+          <li className="flex items-center justify-between gap-6"><span>切换 执行 / 变更 / 验证 / 禅道原文</span><span className="flex gap-1"><Kbd keys={["1"]} /><Kbd keys={["2"]} /><Kbd keys={["3"]} /><Kbd keys={["4"]} /></span></li>
           <li className="flex items-center justify-between gap-6"><span>命令面板</span><Kbd keys={["mod", "K"]} /></li>
         </ul>
       </div>

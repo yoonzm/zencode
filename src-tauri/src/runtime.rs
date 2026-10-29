@@ -52,6 +52,7 @@ pub struct Runtime {
     slots: Arc<Semaphore>,
     syncing: AtomicBool,
     task_mutations: Mutex<()>,
+    updating: AtomicBool,
 }
 impl Runtime {
     pub fn new(root: PathBuf, emit: Emit) -> Result<Arc<Self>> {
@@ -60,7 +61,7 @@ impl Runtime {
         if let Some(tasks) = data["tasks"].as_array_mut() {
             for t in tasks {
                 t["run"]["mrBusy"] = json!(false);
-                if ["running", "queued", "paused", "waiting"].contains(&text(&t["run"], "state")) {
+                if ["running", "queued", "waiting"].contains(&text(&t["run"], "state")) {
                     t["run"]["state"] = json!("failed");
                     if t["run"]["verify"].is_object() {
                         t["run"]["verify"]["state"] = json!("unverified");
@@ -86,6 +87,7 @@ impl Runtime {
             slots: Arc::new(Semaphore::new(limit)),
             syncing: AtomicBool::new(false),
             task_mutations: Mutex::new(()),
+            updating: AtomicBool::new(false),
         }))
     }
     async fn persist(&self) -> Result<()> {
@@ -150,12 +152,38 @@ impl Runtime {
     }
     pub async fn call(self: &Arc<Self>, op: &str, args: Value) -> Result<Value> {
         // A deletion must not race a sync merge, a new run, or MR submission.
-        let _mutation = if matches!(op, "sync" | "delete" | "start" | "reverify" | "mr" | "cleanup") {
+        let _mutation = if matches!(op, "sync" | "delete" | "start" | "reverify" | "mr" | "cleanup" | "resumeAfterUpdate") {
             Some(self.task_mutations.lock().await)
         } else {
             None
         };
+        if self.updating.load(Ordering::SeqCst) && !matches!(op, "load" | "viewed") {
+            return Err("正在准备安装更新，请稍后再试".into());
+        }
         match op {
+            "resumeAfterUpdate" => {
+                let checkpoint = self.data.lock().await["updateResume"].clone();
+                if checkpoint.is_null() { return Ok(Value::Null); }
+                // Never auto-resume after an installer failure or an ordinary restart.
+                if text(&checkpoint, "version") != env!("CARGO_PKG_VERSION") { return Ok(Value::Null); }
+                let config = restore_secrets(&self.data.lock().await["prefs"])?["config"].clone();
+                for id in checkpoint["ids"].as_array().into_iter().flatten().filter_map(Value::as_str) {
+                    if self.task(id).await.is_ok_and(|t| text(&t["run"], "state") == "paused") {
+                        let mut task_config = config.clone();
+                        task_config["verifyOnly"] = json!(checkpoint["verifyIds"].as_array().is_some_and(|ids| ids.iter().any(|v| v.as_str() == Some(id))));
+                        if let Err(e) = self.enqueue(id, task_config, String::new()).await {
+                            (self.emit)("desktop:error", json!(format!("更新后恢复任务 {id} 失败：{e}")));
+                        }
+                    }
+                    // Consume individually so a crash cannot replay completed work.
+                    let mut data = self.data.lock().await;
+                    if let Some(ids) = data["updateResume"]["ids"].as_array_mut() { ids.retain(|v| v.as_str() != Some(id)); }
+                    self.storage.save(&data)?;
+                }
+                self.data.lock().await["updateResume"] = Value::Null;
+                self.persist().await?;
+                Ok(Value::Null)
+            }
             "cleanup" => self.cleanup(&args).await,
             "clearPrefs" => {
                 for service in ["zentao", "gitlab"] {
@@ -1024,6 +1052,56 @@ impl Runtime {
             push_event(t, json!({"kind":"system","tone":"success","text":"已提交 MR"}));
         }).await
     }
+    pub async fn prepare_update(&self, version: &str) -> Result<()> {
+        // Serialize with sync, MR creation and all task/queue mutations.
+        let _mutation = self.task_mutations.lock().await;
+        if self.updating.swap(true, Ordering::SeqCst) { return Err("正在准备更新".into()); }
+        let result = self.checkpoint_update(version).await;
+        if result.is_err() { self.updating.store(false, Ordering::SeqCst); }
+        result
+    }
+    async fn checkpoint_update(&self, version: &str) -> Result<()> {
+        let tasks = self.data.lock().await["tasks"].as_array().cloned().unwrap_or_default();
+        if tasks.iter().any(|t| text(&t["run"], "state") == "waiting") {
+            return Err("有任务正在等待权限审批或测试计划确认，请先处理后再安装更新".into());
+        }
+        let ids: Vec<String> = tasks.iter().filter(|t| ["running", "queued"].contains(&text(&t["run"], "state")))
+            .map(|t| text(t,"id").to_owned()).collect();
+        let verify_ids: Vec<String> = tasks.iter().filter(|t| ["preparing", "selfcheck", "planning", "running"].contains(&text(&t["run"]["verify"], "state")))
+            .map(|t| text(t,"id").to_owned()).collect();
+        let jobs: Vec<_> = self.jobs.lock().await.iter().map(|(id, job)| (id.clone(), job.clone())).collect();
+        // Mark every job before waking the queue: no queued job may start work.
+        for (_, job) in &jobs {
+            job.paused.store(true, Ordering::SeqCst);
+            job.cancel_queue.notify_one();
+            job.verify_ready.notify_one();
+        }
+        let stopped = tokio::time::timeout(std::time::Duration::from_secs(45), async {
+            for (id, job) in &jobs {
+                let session = job.session.lock().await.clone();
+                let turn = job.turn.lock().await.clone();
+                if let Some(session) = session {
+                    if !turn.is_empty() {
+                        let task = self.task(id).await?;
+                        session.request("turn/interrupt", json!({"threadId":task["run"]["threadId"],"turnId":turn})).await?;
+                    }
+                }
+            }
+            for (_, job) in &jobs { job.finished.notified().await; }
+            Ok::<(), String>(())
+        }).await;
+        stopped.map_err(|_| "任务尚未安全暂停，已取消安装；请等待任务结束后重试".to_string())??;
+        let mut data = self.data.lock().await;
+        // Only interrupted jobs are eligible; a task may have finished during shutdown.
+        let ids: Vec<_> = ids.into_iter().filter(|id| data["tasks"].as_array().is_some_and(|ts| ts.iter().any(|t| text(t,"id") == id && text(&t["run"],"state") == "paused"))).collect();
+        data["updateResume"] = json!({"version":version,"ids":ids,"verifyIds":verify_ids});
+        self.storage.save(&data)
+    }
+    pub async fn cancel_update(&self) -> Result<()> {
+        self.updating.store(false, Ordering::SeqCst);
+        self.data.lock().await["updateResume"] = Value::Null;
+        self.persist().await
+    }
     pub async fn shutdown(&self) {
         for job in self.jobs.lock().await.values() {
             job.stopped.store(true, Ordering::SeqCst);
@@ -1085,6 +1163,28 @@ pub fn validate_remote(remote: &str, project: &Value) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn updater_cancels_queue_and_persists_only_automatic_resume_candidates() {
+        let root = tempfile::tempdir().unwrap();
+        let mut paused = services::empty_run(); paused["state"] = json!("paused");
+        Storage::new(root.path()).save(&json!({"prefs":{},"tasks":[
+            {"id":"queued","product":"P","repoId":"team/app","run":services::empty_run()},
+            {"id":"manual","product":"P","run":paused}
+        ]})).unwrap();
+        let rt = Runtime::new(root.path().into(), Arc::new(|_,_| {})).unwrap();
+        let permit = rt.slots.clone().acquire_owned().await.unwrap();
+        let config = json!({"codex":{},"mappings":[{"product":"P","repos":[{"repo":"team/app","branch":"main"}]}]});
+        rt.call("start", json!({"id":"queued","config":config})).await.unwrap();
+        rt.prepare_update(env!("CARGO_PKG_VERSION")).await.unwrap();
+        assert!(rt.jobs.lock().await.is_empty());
+        let saved = Storage::new(root.path()).load().unwrap();
+        assert_eq!(saved["updateResume"]["ids"], json!(["queued"]));
+        assert_eq!(saved["tasks"][0]["run"]["state"], "paused");
+        assert_eq!(saved["tasks"][1]["run"]["state"], "paused");
+        drop(permit);
+        let recovered = Runtime::new(root.path().into(), Arc::new(|_,_| {})).unwrap();
+        assert_eq!(recovered.data.lock().await["tasks"][0]["run"]["state"], "paused");
+    }
     #[tokio::test]
     async fn sync_auto_run_defaults_on_and_only_queues_new_tasks() {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};

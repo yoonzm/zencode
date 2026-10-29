@@ -56,7 +56,28 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
-      - run: npm run package -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+      - name: Configure signed updater artifacts
+        shell: python
+        env:
+          UPDATER_PUBLIC_KEY: ${{ vars.ZENCODE_UPDATER_PUBLIC_KEY }}
+          UPDATER_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          import json, os
+          from pathlib import Path
+          public = bool(os.environ.get('UPDATER_PUBLIC_KEY', '').strip())
+          private = bool(os.environ.get('UPDATER_PRIVATE_KEY', '').strip())
+          assert public == private, 'Configure both updater public and private keys'
+          assert public or not os.environ['GITHUB_REF'].startswith('refs/tags/'), 'Release builds require updater signing keys'
+          Path('updater-build.json').write_text(json.dumps({'bundle': {'createUpdaterArtifacts': public and private}}))
+      - run: npm run package -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --config updater-build.json
+        env:
+          ZENCODE_UPDATER_PUBLIC_KEY: ${{ vars.ZENCODE_UPDATER_PUBLIC_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      - name: Name updater artifacts by architecture
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
+        run: python3 .github/scripts/updater_release.py
       - name: Verify macOS disk image
         if: runner.os == 'macOS'
         shell: bash
@@ -88,7 +109,10 @@ jobs:
           name: ZenCode-${{ matrix.target }}
           path: |
             src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe
+            src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe.sig
             src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+            src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz.sig
           if-no-files-found: error
           retention-days: 14
 

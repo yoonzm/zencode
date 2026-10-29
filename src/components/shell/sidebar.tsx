@@ -1,3 +1,5 @@
+import { Button } from "@/components/ui/button";
+import { downloadUpdate, dismissUpdate, requestInstall } from "@/store/update";
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ChevronsUpDown, Package, Inbox, Moon, Monitor, PanelLeft, PanelLeftClose, RefreshCw, Search, Settings, Sparkles, Sun, User, CircleCheck, GitPullRequest, RotateCcw, Rocket } from "@/lib/icons";
@@ -82,6 +84,25 @@ export function SidebarRail() {
           <Settings className="size-4" />
         </button>
       </Tip>
+    </div>
+  );
+}
+
+function UpdateCard({ onNavigate }: { onNavigate: () => void }) {
+  const u = useApp((s) => s.update);
+  if (u.dismissed || !["available", "downloading", "ready", "installing"].includes(u.status)) return null;
+  const open = () => { navigate({ name: "prefs", section: "about" }); onNavigate(); };
+  return (
+    <div className="mx-2 mb-2 rounded-lg border border-border bg-card p-2.5">
+      <p className="text-sm font-medium text-foreground">{u.status === "ready" ? `${u.version} 已就绪` : `ZenCode ${u.version} 可更新`}</p>
+      <p className="mt-0.5 text-xs text-muted-foreground" aria-live="polite">{u.status === "downloading" ? (u.progress == null ? "正在下载…" : `正在下载 ${u.progress}%`) : u.status === "ready" ? "重新启动后生效" : u.status === "installing" ? "正在保存任务并安装…" : "查看更新内容"}</p>
+      <div className="mt-2 flex items-center gap-1.5">
+        <Button size="sm" onClick={u.status === "available" ? () => { downloadUpdate(); } : requestInstall} disabled={["downloading", "installing"].includes(u.status)}>
+          {u.status === "available" ? "下载更新" : u.status === "ready" ? "重新启动" : u.status === "installing" ? "安装中…" : "下载中…"}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={open}>详情</Button>
+        <Button size="sm" variant="ghost" className="ml-auto" onClick={dismissUpdate}>稍后</Button>
+      </div>
     </div>
   );
 }
@@ -233,6 +254,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         )}
       </nav>
 
+      <UpdateCard onNavigate={go} />
       <div className="flex items-center gap-1 border-t border-border px-2 py-2">
         <button
           onClick={() => {

@@ -13,8 +13,18 @@ import { CommandPalette } from "@/components/views/palette";
 import { ConfirmHost, ShortcutsDialog } from "@/components/views/overlays";
 import { ToastViewport } from "@/components/ui/toast";
 import { store } from "@/store/state";
+import { checkUpdate } from "@/store/update";
 
 export function AppShell() {
+  const hydrated = useApp(s => s.hydrated);
+  const autoUpdate = useApp(s => s.autoUpdate);
+  const channel = useApp(s => s.channel);
+  useEffect(() => {
+    if (!hydrated || !autoUpdate) return;
+    const first = window.setTimeout(() => { void checkUpdate(); }, 4000);
+    const interval = window.setInterval(() => { void checkUpdate(); }, 6 * 3600_000);
+    return () => { clearTimeout(first); clearInterval(interval); };
+  }, [hydrated, autoUpdate, channel]);
   const route = useRoute();
   const open = useApp((s) => s.sidebarOpen);
   const compact = useMedia("(max-width: 859px)");
@@ -37,6 +47,7 @@ export function AppShell() {
     const due = () => {
       if (route.name === "setup") return;
       const s = store.get();
+      if (s.update.status === "installing") return;
       if (Date.now() - Math.max(s.lastSync, s.lastSyncAttempt) >= ms - 500) void sync({ auto: true });
     };
     const h = window.setInterval(due, Math.min(ms, 15_000));

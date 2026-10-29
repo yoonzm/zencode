@@ -11,7 +11,7 @@ on:
         required: true
         type: string
       tag:
-        description: Version tag (vX.Y.Z)
+        description: Version tag (vX.Y.Z or vX.Y.Z-beta.N)
         required: true
         type: string
   workflow_call:

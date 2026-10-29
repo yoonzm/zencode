@@ -6,6 +6,8 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tomllib
+from updater_release import VERSION_TAG, installer_names, updater_names, write_manifest
 
 repo = os.environ['GITHUB_REPOSITORY']
 run_id = os.environ['RELEASE_RUN']
@@ -13,7 +15,7 @@ commit = os.environ['RELEASE_COMMIT']
 tag = os.environ['RELEASE_TAG']
 assert re.fullmatch(r'\d+', run_id), 'Invalid run ID'
 assert re.fullmatch(r'[a-f0-9]{40}', commit), 'Expected exact commit SHA'
-assert re.fullmatch(r'v\d+\.\d+\.\d+', tag), 'Expected vX.Y.Z'
+assert re.fullmatch(VERSION_TAG, tag), 'Expected vX.Y.Z or vX.Y.Z-beta.N'
 
 def gh(*args):
     return subprocess.check_output(['gh', *args], text=True)
@@ -32,6 +34,9 @@ def verify():
     assert run['conclusion'] == 'success' or (run['status'] == 'in_progress' and run['event'] == 'push' and run['head_branch'] == tag), 'Build is not successful'
     package = json.loads(gh('api', f'repos/{repo}/contents/package.json?ref={commit}', '-H', 'Accept: application/vnd.github.raw+json'))
     assert tag == 'v' + package['version'], 'Version mismatch'
+    tauri = json.loads(gh('api', f'repos/{repo}/contents/src-tauri/tauri.conf.json?ref={commit}', '-H', 'Accept: application/vnd.github.raw+json'))
+    cargo = tomllib.loads(gh('api', f'repos/{repo}/contents/src-tauri/Cargo.toml?ref={commit}', '-H', 'Accept: application/vnd.github.raw+json'))
+    assert package['version'] == tauri['version'] == cargo['package']['version'], 'Frontend/native version mismatch'
     releases = json.loads(gh('api', '--paginate', f'repos/{repo}/releases'))
     assert not any(r['tag_name'] == tag for r in releases), 'Release already exists; refusing to overwrite'
     refs = api(f'git/matching-refs/tags/{tag}')
@@ -45,9 +50,16 @@ def verify():
 verify()
 if sys.argv[1] == 'publish':
     root = Path('release-assets')
-    expected = {f'ZenCode_{tag[1:]}_x64-setup.exe', f'ZenCode_{tag[1:]}_x64.dmg', f'ZenCode_{tag[1:]}_aarch64.dmg'}
+    updates = set(updater_names(tag[1:]).values())
+    expected = installer_names(tag[1:]) | updates | {name + '.sig' for name in updates}
     files = [p for p in root.rglob('*') if p.is_file()]
-    assert {p.name for p in files} == expected and len(files) == 3, 'Unexpected or missing installer files'
+    assert {p.name for p in files} == expected and len(files) == len(expected), 'Unexpected or missing signed release artifacts'
+    # download-artifact may retain bundle subdirectories; flatten only after duplicate validation.
+    for p in files:
+        if p.parent != root: p.rename(root / p.name)
+    update_manifest = write_manifest(root, repo, tag, f'ZenCode {tag}\nRelease notes: https://github.com/{repo}/releases/tag/{tag}')
+    files = [root / name for name in sorted(expected)] + [update_manifest]
+    expected.add(update_manifest.name)
     checksums = root / 'SHA256SUMS.txt'
     checksums.write_text(''.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n' for p in sorted(files)))
     notes = Path('release-notes.md')
@@ -59,13 +71,13 @@ Verified build: https://github.com/{repo}/actions/runs/{run_id}
 Includes Windows x64 NSIS installer and macOS Intel / Apple Silicon disk images (macOS 13.3+).
 Type checking, automated tests and builds passed. Windows installation/startup smoke test and macOS disk-image checksum/mount checks passed.
 
-**Validation limits:** Installers are unsigned and macOS builds are not notarized. Live authenticated ZenTao → Codex → GitLab end-to-end execution, native credential-vault roundtrips, interactive macOS flows and visual parity remain unverified. The cloud browser blocked visual comparison. Codex handshake passed with an empty writable configuration; this is not authenticated model execution. Install and authenticate Codex CLI separately.
+**Validation limits:** Update artifacts carry Tauri updater signatures; installers do not have OS code signing and macOS builds are not notarized. Live authenticated ZenTao → Codex → GitLab end-to-end execution, native credential-vault roundtrips, interactive macOS flows, old-to-new updater installation and visual parity remain unverified. Install and authenticate Codex CLI separately.
 
 MR submission does not write links, comments, task status or fix versions to ZenTao. Unsupported API/interaction variants return errors. This release is not a claim of complete production acceptance.
 
 SHA256SUMS.txt contains installer checksums.
 ''')
-    gh('release', 'create', tag, '--repo', repo, '--target', commit, '--title', f'ZenCode {tag}', '--notes-file', str(notes), '--draft')
+    gh('release', 'create', tag, '--repo', repo, '--target', commit, '--title', f'ZenCode {tag}', '--notes-file', str(notes), '--draft', *(['--prerelease'] if '-beta.' in tag else []))
     gh('release', 'upload', tag, '--repo', repo, *map(str, files), str(checksums))
     # The by-tag endpoint can return 404 until a draft is published and its tag exists.
     release = next(r for r in api('releases?per_page=100') if r['tag_name'] == tag and r['draft'])

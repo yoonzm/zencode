@@ -3,6 +3,12 @@
   "productName": "ZenCode",
   "version": "0.1.0",
   "identifier": "io.github.yoonzm.zencode",
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": []
+    }
+  },
   "build": {
     "beforeBuildCommand": "npm run build",
     "beforeDevCommand": "npm run build",

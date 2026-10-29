@@ -20,6 +20,18 @@ def fixtures():
     }
 
 class BuildPlanTests(unittest.TestCase):
+    def test_signed_release_requires_all_update_assets(self):
+        data = fixtures()
+        release = data['releases?per_page=100'][0]
+        release['assets'] = [{'name': name, 'size': 123, 'state': 'uploaded', 'digest': 'sha256:' + 'b' * 64}
+                             for name in module.release_names('0.1.0')]
+        self.assertFalse(self.decide(data))
+        release['assets'] = [a for a in release['assets'] if not a['name'].endswith('x64-setup.exe.sig')]
+        with self.assertRaisesRegex(AssertionError, 'incomplete'): self.decide(data)
+
+    def test_beta_tag_is_supported(self):
+        self.assertTrue(self.decide({'releases?per_page=100': []}, ref='refs/tags/v0.2.0-beta.1'))
+
     def decide(self, data, event='push', ref='refs/tags/v0.1.0'):
         return module.should_build(event, ref, SHA, REPO, data.__getitem__)
 

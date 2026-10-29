@@ -1,3 +1,4 @@
+import { checkUpdate, downloadUpdate, requestInstall, changeChannel } from "@/store/update";
 import { flushPrefs } from "@/store/state";
 import { desktopCall } from "@/lib/desktop";
 import { useEffect, useMemo, useState } from "react";
@@ -361,15 +362,58 @@ function Advanced() {
 }
 
 function About() {
+  const version = useApp((s) => s.appVersion);
+  const u = useApp((s) => s.update);
+  const auto = useApp((s) => s.autoUpdate);
+  const channel = useApp((s) => s.channel);
+  const busy = ["checking", "downloading", "installing"].includes(u.status);
   return (
-    <div className="flex flex-col items-start gap-4">
+    <div className="flex flex-col items-start gap-5">
       <Logo size={36} className="text-foreground" />
       <div>
         <p className="text-lg font-semibold text-foreground">ZenCode</p>
-        <p className="text-sm text-muted-foreground">版本 0.1.0 · 桌面应用</p>
+        <p className="text-sm text-muted-foreground">版本 {version || "读取中…"} · 桌面应用</p>
       </div>
+      <div className="w-full">
+        <Group>
+          <Row
+            title="检查更新"
+            desc={
+              u.status === "checking" ? "正在检查…"
+              : u.status === "available" ? `发现新版本 ${u.version}`
+              : u.status === "downloading" ? `正在下载 ${u.version}${u.progress == null ? "…" : `（${u.progress}%）`}`
+              : u.status === "ready" ? `${u.version} 已下载，重新启动后生效`
+              : u.status === "installing" ? "正在保存任务并安装更新…"
+              : u.status === "error" ? (u.error || "检查失败，请重试")
+              : u.status === "latest" ? `当前通道暂无可用更新${u.checkedAt ? ` · ${new Date(u.checkedAt).toLocaleString()}` : ""}`
+              : "还没有检查过"
+            }
+          >
+            {u.status === "available" ? (
+              <Button onClick={() => downloadUpdate()}>下载更新</Button>
+            ) : u.status === "ready" ? (
+              <Button onClick={requestInstall}>重新启动并更新</Button>
+            ) : (
+              <Button variant="secondary" loading={busy} disabled={busy} onClick={() => checkUpdate(true)}>检查更新</Button>
+            )}
+          </Row>
+          {(u.status === "available" || u.status === "ready" || u.status === "downloading") && u.notes && (
+            <div className="py-3.5">
+              <p className="mb-1.5 text-xs font-medium text-muted-foreground">{u.version} 更新内容</p>
+              <p className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground/90">{u.notes}</p>
+            </div>
+          )}
+          <Row title="自动检查更新" desc="启动时和每隔几小时在后台检查一次，有新版本时在侧栏提示。">
+            <Toggle checked={auto} onChange={(v) => store.set({ autoUpdate: v })} label="自动检查更新" />
+          </Row>
+          <Row title="更新通道" desc={channel === "beta" ? "预览版能更早用到新功能，但可能不稳定。" : "只接收正式版本更新，不自动降级。"}>
+            <fieldset disabled={busy || u.status === "ready"}><Segmented label="更新通道" value={channel} onChange={(v) => { void changeChannel(v); }} options={[{ value: "stable", label: "稳定版" }, { value: "beta", label: "预览版" }]} /></fieldset>
+          </Row>
+        </Group>
+      </div>
+      {u.error && u.status !== "error" && <p role="alert" className="text-sm text-danger">{u.error}</p>}
       <p className="max-w-md text-sm leading-6 text-muted-foreground">
-        ZenCode 通过本机 Codex CLI 处理禅道任务，并在审核后推送 GitLab MR。当前版本的兼容范围与限制见项目 README。
+        ZenCode 通过本机 Codex CLI 处理禅道任务，并在审核后推送 GitLab MR。更新包来自 GitHub Releases，安装前会校验签名。
       </p>
       <Plug className="hidden" />
     </div>

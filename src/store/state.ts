@@ -52,10 +52,15 @@ export interface Prefs {
   setupDone: boolean;
   notify: Notify;
   cleanupDays: number;
+  autoUpdate: boolean;
+  channel: "stable" | "beta";
   config: AppConfig;
 }
 
 export interface AppState extends Prefs {
+  hydrated: boolean;
+  appVersion: string;
+  update: UpdateState;
   tasks: ZTask[];
   filters: Filters;
   listStatus: ListStatus;
@@ -73,6 +78,16 @@ export interface AppState extends Prefs {
   tab: "run" | "diff" | "verify" | "zentao";
 }
 
+export interface UpdateState {
+  status: "idle" | "checking" | "latest" | "available" | "downloading" | "ready" | "installing" | "error";
+  version?: string;
+  notes?: string;
+  progress?: number | null;
+  checkedAt?: number;
+  error?: string;
+  dismissed?: boolean;
+}
+
 const PREF_KEY = "zencode.prefs.v1";
 
 const defaultPrefs: Prefs = {
@@ -85,6 +100,8 @@ const defaultPrefs: Prefs = {
   setupDone: false,
   notify: { done: true, approval: true, failed: true, sound: false },
   cleanupDays: 30,
+  autoUpdate: true,
+  channel: "stable",
   config: DEFAULT_CONFIG,
 };
 
@@ -93,6 +110,9 @@ const saved = defaultPrefs;
 export const store = createStore<AppState>({
   ...defaultPrefs,
   ...saved,
+  hydrated: false,
+  appVersion: "",
+  update: { status: "idle" },
   notify: { ...defaultPrefs.notify, ...(saved.notify ?? {}) },
   config: { ...defaultPrefs.config, ...(saved.config ?? {}) },
   tasks: [],
@@ -116,7 +136,7 @@ export function useApp<S>(selector: (s: AppState) => S): S {
 }
 
 // ── 持久化 ────────────────────────────────────────────────
-const PERSIST_KEYS: (keyof Prefs)[] = ["theme", "density", "sidebarOpen", "listWidth", "group", "sort", "setupDone", "notify", "cleanupDays", "config"];
+const PERSIST_KEYS: (keyof Prefs)[] = ["theme", "density", "sidebarOpen", "listWidth", "group", "sort", "setupDone", "notify", "cleanupDays", "autoUpdate", "channel", "config"];
 let lastPersisted = "";
 let hydrated = false;
 export async function hydrate() {
@@ -124,12 +144,15 @@ export async function hydrate() {
   // Only supported preferences are restored; obsolete prototype platform overrides are ignored.
   const prefs = Object.fromEntries(PERSIST_KEYS.filter(k => k in (data.prefs ?? {})).map(k => [k, data.prefs[k]]));
   prefs.cleanupDays = [7, 30, 60, 90].includes(prefs.cleanupDays) ? prefs.cleanupDays : 30;
+  prefs.autoUpdate = prefs.autoUpdate !== false;
+  prefs.channel = prefs.channel === "beta" ? "beta" : "stable";
   const config = prefs.config ?? defaultPrefs.config;
   prefs.config = { ...config, mappings: (config.mappings ?? []).map((m: any) => m.repos ? m : ({ id: m.id, product: m.product, repos: [{ id: `${m.id}-repo`, repo: m.repo ?? "", branch: m.branch ?? "", role: "", testCmd: m.testCmd ?? "" }] })), zentao: { ...config.zentao, syncIntervalMin: config.zentao?.syncIntervalMin ?? 5, autoRun: config.zentao?.autoRun ?? true } };
   const platform: Platform = data.platform === "mac" || data.platform === "win" ? data.platform : detectPlatform();
   store.set({ ...prefs, platform, tasks: data.tasks, listStatus: data.tasks.length ? "ready" : "empty", syncError: undefined });
   applyTheme(store.get().theme); applyPlatform(platform);
   localStorage.removeItem(PREF_KEY);
+  store.set({ hydrated: true });
   hydrated = true;
 }
 let saveQueue: Promise<unknown> = Promise.resolve();

@@ -5,6 +5,7 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 use zencode_core::{runtime::Runtime, text};
+mod updater;
 #[tauri::command]
 async fn desktop_call(
     app: tauri::AppHandle,
@@ -13,6 +14,9 @@ async fn desktop_call(
     args: Option<Value>,
 ) -> Result<Value, String> {
     let args = args.unwrap_or(Value::Null);
+    if matches!(op.as_str(), "updateInfo" | "checkUpdate" | "downloadUpdate" | "installUpdate") {
+        return updater::call(&app, state.inner(), &op, args).await;
+    }
     match op.as_str() {
         "attachment" => {
             let path = state.inner().call(&op, args).await?;
@@ -48,6 +52,8 @@ fn main() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updater::UpdaterState::default())
         .setup(|app| {
             let root = app.path().app_data_dir()?;
             std::fs::create_dir_all(&root)?;

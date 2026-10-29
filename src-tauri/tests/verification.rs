@@ -80,10 +80,18 @@ async fn verification_plan_confirm_skip_stop_and_reverify() {
         } else {
             rt.call("verifyDecision",json!({"id":"bug-1","go":decision=="confirm"})).await.unwrap();
             assert_eq!(wait(&rt,"review").await["run"]["verify"]["state"],if decision=="confirm" {"passed"} else {"unverified"});
-            // The worker closes its CLI before removing its job entry.
-            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            // Review is emitted before CLI cleanup finishes (taskkill can exceed 300 ms).
+            // Retry only the documented transient busy response, with a bounded deadline.
             let mut auto = config.clone(); auto["codex"]["confirmPlan"]=json!(false);
-            rt.call("reverify",json!({"id":"bug-1","config":auto})).await.unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                loop {
+                    match rt.call("reverify",json!({"id":"bug-1","config":auto})).await {
+                        Ok(_) => break,
+                        Err(e) if e == "执行正在收尾，请稍后重新验证" => tokio::time::sleep(std::time::Duration::from_millis(20)).await,
+                        Err(e) => panic!("Unexpected reverify error: {e}"),
+                    }
+                }
+            }).await.expect("Worker cleanup did not finish");
             assert_eq!(wait(&rt,"review").await["run"]["verify"]["state"],"passed");
         }
         rt.shutdown().await;

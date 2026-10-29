@@ -9,6 +9,7 @@ import { hasMod } from "@/lib/platform";
 import { isTyping } from "@/lib/hooks";
 import { decodeTask } from "@/store/actions";
 import { toast } from "@/store/toast";
+import { initUpdates } from "@/store/update";
 
 export function App() {
   useEffect(() => {
@@ -16,6 +17,7 @@ export function App() {
     hydrate().then(() => {
       store.set({ tasks: store.get().tasks.map(decodeTask) });
       if (!store.get().setupDone && !location.hash) navigate({ name: "setup" });
+      void initUpdates().catch(e => error(e.message));
     }).catch(e => error(e.message));
     const offTask = window.desktop?.onTask(task => store.set(s => ({ tasks: s.tasks.map(t => t.id === task.id ? decodeTask(task) : t) })));
     const offError = window.desktop?.onError(error);
