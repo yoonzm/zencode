@@ -17,7 +17,7 @@ pub fn prompt(phase: &str, instructions: &str, plan: &Value) -> String {
     } else {
         "执行已确认的测试计划，不修改业务代码。只能报告实际执行的结果。缺少环境、凭据或工具时必须标为 unverified；禁止虚构成功、证据或录屏。"
     };
-    format!("{action}\n产品验证说明：{instructions}\n已有计划：{plan}\n最终回复只输出 JSON：{{\"state\":\"unverified|passed|failed\",\"mode\":\"checks|api|ui\",\"where\":\"local|server\",\"target\":\"实际地址（未知则留空）\",\"summary\":\"结论及限制\",\"steps\":[{{\"id\":\"1\",\"title\":\"操作\",\"expect\":\"预期\",\"status\":\"pending|passed|failed\",\"note\":\"实际结果与证据（计划阶段留空）\"}}]}}。禁止推送、创建 MR 或修改外部系统配置。")
+    format!("{action}\n产品验证说明：{instructions}\n已有计划：{plan}\n最终回复只输出 JSON：{{\"state\":\"unverified|passed|failed\",\"mode\":\"checks|api|ui\",\"where\":\"local|server\",\"target\":\"实际地址（未知则留空）\",\"summary\":\"结论及限制\",\"steps\":[{{\"id\":\"1\",\"title\":\"操作\",\"expect\":\"预期\",\"status\":\"pending|passed|failed\",\"note\":\"实际结果与证据（计划阶段留空）\"}}]}}。禁止推送、创建 MR。")
 }
 
 pub fn report(response: &str, planning: bool, logs: Value) -> Value {
