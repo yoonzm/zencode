@@ -6,7 +6,7 @@ export type RunState =
   | "queued" // 排队中
   | "running" // 执行中
   | "waiting" // 等待你审批
-  | "paused" // 已暂停
+  | "stopped" // 已停止
   | "review" // Codex 已完成，等待你审核
   | "done" // 已提交 MR
   | "failed"; // 失败
@@ -72,6 +72,8 @@ export interface DiffFile {
   add: number;
   del: number;
   hunks: Hunk[];
+  /** 你在编辑器里改过这个文件 */
+  manual?: boolean;
 }
 
 export interface Run {
@@ -202,7 +204,7 @@ export const STATE_LABEL: Record<RunState, string> = {
   queued: "排队中",
   running: "执行中",
   waiting: "等待审批",
-  paused: "已暂停",
+  stopped: "已停止",
   review: "待审核",
   done: "已提交",
   failed: "失败",

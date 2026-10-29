@@ -3,11 +3,11 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { Command as Cmdk } from "cmdk";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/primitives/dialog";
 import { cn } from "@/lib/utils";
-import { Plus, ArrowRight, Bug, Command as CommandIcon, CornerDownLeft, GitBranch, GitPullRequest, Inbox, Keyboard, ListFilter, Monitor, Moon, PanelLeft, Pause, Play, RefreshCw, RotateCcw, Rocket, Search, Settings, Sun, Eye, Code, Lightbulb, User, Sparkles, Loader, ShieldCheck } from "@/lib/icons";
+import { Plus, ArrowRight, Bug, Command as CommandIcon, CornerDownLeft, GitBranch, GitPullRequest, Inbox, Keyboard, ListFilter, Monitor, Moon, PanelLeft, Square, FolderOpen, Play, RefreshCw, RotateCcw, Rocket, Search, Settings, Sun, Eye, Code, Lightbulb, User, Sparkles, Loader, ShieldCheck } from "@/lib/icons";
 import { useApp, store } from "@/store/state";
 import { useRoute, navigate } from "@/lib/route";
 import { fuzzy } from "@/lib/fuzzy";
-import { setPalette, setShortcuts, setTheme, setFilters, resetFilters, sync, toggleSidebar, startRun, pauseRun, resumeRun, createMr, retryRun, setTab, openTask, setImportOpen } from "@/store/actions";
+import { setPalette, setShortcuts, setTheme, setFilters, resetFilters, sync, toggleSidebar, startRun, stopRun, continueRun, openInEditor, openFolder, createMr, retryRun, setTab, openTask, setImportOpen } from "@/store/actions";
 import { EMPTY_FILTERS } from "@/store/state";
 import { copyText } from "@/lib/clipboard";
 import { Kbd } from "@/components/ui/kbd";
@@ -75,11 +75,15 @@ export function CommandPalette() {
       const st = cur.run.state;
       const label = taskRef(cur);
       if (st === "idle") list.push({ id: "c-start", group: "当前任务", title: "交给 Codex 执行", hint: label, icon: Play, run: done(() => startRun(cur.id)) });
-      if (st === "running") list.push({ id: "c-pause", group: "当前任务", title: "暂停执行", hint: label, icon: Pause, run: done(() => pauseRun(cur.id)) });
-      if (st === "paused") list.push({ id: "c-resume", group: "当前任务", title: "恢复执行", hint: label, icon: Play, run: done(() => resumeRun(cur.id)) });
+      if (st === "running" || st === "waiting") list.push({ id: "c-stop", group: "当前任务", title: "停止执行", hint: label, icon: Square, keys: ["esc"], run: done(() => stopRun(cur.id)) });
+      if (st === "stopped") list.push({ id: "c-resume", group: "当前任务", title: "继续执行", hint: label, icon: Play, run: done(() => continueRun(cur.id)) });
       if (st === "review") list.push({ id: "c-mr", group: "当前任务", title: "创建 Merge Request", hint: label, icon: GitPullRequest, run: done(() => createMr(cur.id)) });
       if (st === "failed") list.push({ id: "c-retry", group: "当前任务", title: "重试", hint: label, icon: RotateCcw, run: done(() => retryRun(cur.id)) });
       list.push({ id: "c-instr", group: "当前任务", title: "追加指令…", hint: label, icon: Sparkles, keywords: "输入 指令 要求", run: done(() => { setTab("run"); setTimeout(() => document.getElementById("composer")?.focus(), 30); }) });
+      if (cur.run.state !== "idle" && !cur.run.cleaned) {
+        list.push({ id: "c-code", group: "当前任务", title: "在 VS Code 中打开", hint: label, icon: Code, keywords: "编辑器 目录 vscode", run: done(() => openInEditor(cur.id)) });
+        list.push({ id: "c-folder", group: "当前任务", title: "在文件夹中打开", hint: label, icon: FolderOpen, keywords: "目录 资源管理器 finder", run: done(() => openFolder(cur.id)) });
+      }
       list.push({ id: "c-run", group: "当前任务", title: "查看执行过程", icon: Loader, keys: ["1"], run: done(() => setTab("run")) });
       list.push({ id: "c-diff", group: "当前任务", title: "查看代码变更", icon: Code, keys: ["2"], run: done(() => setTab("diff")) });
       list.push({ id: "c-zt", group: "当前任务", title: cur.manual ? "查看原文" : "查看禅道原文", icon: Eye, keys: ["4"], run: done(() => setTab("zentao")) });
@@ -100,7 +104,7 @@ export function CommandPalette() {
       { id: "f-bug", group: "筛选", title: "只看 Bug", icon: Bug, run: done(() => { setFilters({ kind: "bug" }); navigate({ name: "tasks" }); }) },
       { id: "f-story", group: "筛选", title: "只看需求", icon: Lightbulb, run: done(() => { setFilters({ kind: "story" }); navigate({ name: "tasks" }); }) },
       { id: "f-mine", group: "筛选", title: "只看我的任务", icon: User, run: done(() => { setFilters({ assignee: "me" }); navigate({ name: "tasks" }); }) },
-      { id: "f-active", group: "筛选", title: "只看执行中", icon: Sparkles, run: done(() => { setFilters({ states: ["running", "queued", "waiting", "paused"] }); navigate({ name: "tasks" }); }) },
+      { id: "f-active", group: "筛选", title: "只看执行中", icon: Sparkles, run: done(() => { setFilters({ states: ["running", "queued", "waiting", "stopped"] }); navigate({ name: "tasks" }); }) },
       { id: "f-review", group: "筛选", title: "只看待审核", icon: GitPullRequest, run: done(() => { setFilters({ states: ["review"] }); navigate({ name: "tasks" }); }) },
       { id: "f-clear", group: "筛选", title: "清除全部筛选", icon: ListFilter, run: done(() => resetFilters()) },
       { id: "p-zt", group: "设置", title: "禅道连接", icon: Settings, run: done(() => navigate({ name: "prefs", section: "zentao" })) },

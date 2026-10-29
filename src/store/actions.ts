@@ -77,7 +77,7 @@ export function cleanDoneRuns() { return cleanup("done"); }
 export function applyClear(products: string[] | "all") { return cleanup("clear", products); }
 export function describeClear(products: string[] | "all") {
   const tasks = store.get().tasks.filter(t => products === "all" || products.includes(t.product));
-  const active = tasks.filter(t => ["queued", "running", "waiting", "paused"].includes(t.run.state)).length;
+  const active = tasks.filter(t => ["queued", "running", "waiting", "stopped"].includes(t.run.state)).length;
   return { count: tasks.length, notes: [
     "禅道里的任务不受影响，下次同步会作为新任务重新出现。手动新增的任务删除后无法通过同步找回。",
     active ? `其中 ${active} 个正在进行的任务会被终止。` : "",
@@ -87,9 +87,17 @@ export function describeClear(products: string[] | "all") {
 }
 function runCall(op: string, args: object) { return desktopCall(op, { ...args, config: store.get().config }).catch(report); }
 export function startRun(id: string, instruction?: string, ref?: string) { void runCall("start", { id, instruction: [ref, instruction].filter(Boolean).join("\n") }); }
-export function pauseRun(id: string) { void runCall("pause", { id }); }
-export function resumeRun(id: string) { startRun(id); }
-export function stopRun(id: string) { askConfirm({ title: "终止本次执行？", desc: "终止 Codex 进程，保留独立工作区、改动和执行记录。", confirmLabel: "终止执行", danger: true, onConfirm: () => { void runCall("stop", { id }); } }); }
+export function stopRun(id: string) { void runCall("pause", { id }); }
+export function continueRun(id: string) { startRun(id); }
+function openWorkdir(id: string, opts: object) {
+  const open = () => { void desktopCall("openWorkdir", { id, ...opts }).catch(report); };
+  if (["running", "waiting", "queued"].includes(getTask(id)?.run.state ?? "")) {
+    askConfirm({ title: "Codex 正在执行", desc: "现在编辑文件可能与 Codex 的改动互相覆盖，建议先停止任务。", confirmLabel: "仍要打开", onConfirm: open });
+  } else open();
+}
+export function openInEditor(id: string, opts: { repo?: string; file?: string; line?: number } = {}) { openWorkdir(id, { ...opts, editor: true }); }
+export function openFolder(id: string, repo?: string) { openWorkdir(id, { repo }); }
+export function refreshDiff(id: string) { void desktopCall("refreshDiff", { id }).catch(report); }
 export function deleteTask(id: string) {
   const task = getTask(id);
   if (!task) return;
@@ -114,10 +122,16 @@ export function deleteTask(id: string) {
 }
 export function retryRun(id: string) { startRun(id); }
 export function decideApproval(id: string, evId: string, decision: "once" | "always" | "deny") { void runCall("approve", { id, evId, decision }); }
-export function sendInstruction(id: string, text: string, ref?: string) { startRun(id, text, ref); }
+export async function sendInstruction(id: string, text: string, ref?: string) {
+  try {
+    await desktopCall("start", { id, config: store.get().config, instruction: [ref, text].filter(Boolean).join("\n") });
+    return true;
+  } catch (e) { report(e); return false; }
+}
 export function createMr(id: string) { return runCall("mr", { id }); }
 export function openExternal(url: string) { void desktopCall("open", { url }).catch(report); }
 export function decodeTask(t: ZTask): ZTask {
+  if ((t.run.state as string) === "paused") t.run.state = "stopped";
   if (!t.manual) t.description = t.description.map(b => b.text ? { ...b, text: new DOMParser().parseFromString(b.text, "text/html").body.textContent || "" } : b);
   const raw = (t.run as any).rawDiff as string | undefined;
   if (raw) t.run.files = raw.split(/^diff --git /m).slice(1).map(part => {
@@ -126,7 +140,7 @@ export function decodeTask(t: ZTask): ZTask {
     const minus = lines.find(l => l.startsWith("--- a/"));
     const header = lines[0];
     const path = plus || minus ? (plus || minus)!.slice(6).replace(/\t.*$/, "") : header.slice(header.lastIndexOf(" b/") + 3);
-    return parsePatch(path, part.includes("new file mode") ? "added" : "modified", part);
+    return { ...parsePatch(path, part.includes("new file mode") ? "added" : "modified", part), manual: ((t.run as any).manualFiles ?? []).includes(path) };
   });
   return t;
 }

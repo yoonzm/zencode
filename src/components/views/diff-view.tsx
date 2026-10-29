@@ -1,13 +1,13 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { ChevronRight, CircleCheck, FilePen, FilePlus, GitCompare, Plus } from "@/lib/icons";
+import { Code as CodeIcon, ChevronRight, CircleCheck, FilePen, FilePlus, GitCompare, Plus } from "@/lib/icons";
 import type { DiffFile, DiffLine, ZTask } from "@/data/types";
 import { toSplitRows } from "@/lib/diff";
 import { highlightLine, langOf } from "@/lib/highlight";
 import { Segmented, Checkbox } from "@/components/ui/fields";
 import { EmptyState } from "@/components/ui/empty";
 import { Tip } from "@/components/ui/tooltip";
-import { markViewed, quoteLine } from "@/store/actions";
+import { markViewed, openInEditor, quoteLine } from "@/store/actions";
 import { useApp } from "@/store/state";
 
 function Code({ lang, text }: { lang: string | null; text: string }) {
@@ -17,11 +17,15 @@ function Code({ lang, text }: { lang: string | null; text: string }) {
 const BG = { "+": "bg-diff-add-bg", "-": "bg-diff-del-bg", " ": "" } as const;
 const GUT = { "+": "bg-diff-add-gutter text-foreground", "-": "bg-diff-del-gutter text-foreground", " ": "text-subtle-foreground" } as const;
 
-function UnifiedLine({ l, lang, onQuote }: { l: DiffLine; lang: string | null; onQuote?: () => void }) {
+function UnifiedLine({ l, lang, onQuote, onOpen }: { l: DiffLine; lang: string | null; onQuote?: () => void; onOpen?: () => void }) {
   return (
     <div className={cn("group/line relative grid grid-cols-[3rem_3rem_1.25rem_1fr] font-mono text-[12.5px] leading-5", BG[l.t])}>
       <span className={cn("select-none px-2 text-right tabular-nums", GUT[l.t])}>{l.o ?? ""}</span>
-      <span className={cn("select-none px-2 text-right tabular-nums", GUT[l.t])}>{l.n ?? ""}</span>
+      {onOpen && l.n ? (
+        <button onClick={onOpen} title="在 VS Code 中打开这一行" aria-label={`在 VS Code 中打开第 ${l.n} 行`} className={cn("px-2 text-right tabular-nums outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/60", GUT[l.t])}>{l.n}</button>
+      ) : (
+        <span className={cn("select-none px-2 text-right tabular-nums", GUT[l.t])}>{l.n ?? ""}</span>
+      )}
       <span className={cn("select-none text-center", l.t === "+" ? "text-success" : l.t === "-" ? "text-danger" : "text-transparent")}>{l.t === " " ? "·" : l.t}</span>
       <div className="min-w-0 pr-10"><Code lang={lang} text={l.text} /></div>
       {onQuote && (
@@ -65,10 +69,16 @@ const FileBlock = memo(function FileBlock({ taskId, f, mode, viewed, forceOpen }
           <span className="text-muted-foreground">{dir}</span>
           <span className="font-medium text-foreground">{name}</span>
         </span>
+        {f.manual && <span className="rounded-sm bg-warning/14 px-1 text-[11px] font-medium text-warning">手动修改</span>}
         {f.status === "added" && <span className="rounded-sm bg-success/12 px-1 text-[11px] font-medium text-success">新增</span>}
         <span className="shrink-0 font-mono text-xs tabular-nums">
           <span className="text-success">+{f.add}</span> <span className="text-danger">−{f.del}</span>
         </span>
+        <Tip label="在 VS Code 中打开">
+          <button onClick={() => openInEditor(taskId, { file: f.path })} aria-label="在 VS Code 中打开" className="grid size-6 place-items-center rounded-sm text-muted-foreground outline-none hover:bg-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60">
+            <CodeIcon className="size-3.5" />
+          </button>
+        </Tip>
         <Checkbox
           checked={viewed}
           onChange={(v) => {
@@ -84,7 +94,7 @@ const FileBlock = memo(function FileBlock({ taskId, f, mode, viewed, forceOpen }
             <div key={hi} className="min-w-max">
               <div className="select-none bg-accent/8 px-3 py-0.5 font-mono text-xs text-muted-foreground">{h.header}</div>
               {mode === "unified"
-                ? h.lines.map((l, li) => <UnifiedLine key={li} l={l} lang={lang} onQuote={l.n ? () => quoteLine(f.path, l.n!, l.text) : undefined} />)
+                ? h.lines.map((l, li) => <UnifiedLine key={li} l={l} lang={lang} onQuote={l.n ? () => quoteLine(f.path, l.n!, l.text) : undefined} onOpen={() => openInEditor(taskId, { file: f.path, line: l.n })} />)
                 : toSplitRows(h.lines).map((r, ri) => (
                     <div key={ri} className="grid grid-cols-2 divide-x divide-border">
                       <SplitHalf l={r.left} lang={lang} side="l" />

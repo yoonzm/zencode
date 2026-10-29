@@ -88,6 +88,8 @@ The first updater-capable version must be installed manually. Validate an actual
 
 ## Manual requirements
 
+UI synchronized through `zencode-ui` commit `df549fe`: stop/continue controls retain the task workspace and thread; messages submitted during a running turn queue for the next turn. Pending messages survive stop/restart. Existing persisted `paused` tasks display as stopped. The task menu and diff rows open the actual workspace or file in VS Code (requires its registered URL handler), or the system file manager. While viewing a task, returning to the window or the five-second refresh detects changes made outside an active Codex run and marks changed files as manual edits. Concurrent edits during an active run cannot be reliably attributed to a person.
+
 The task list and command palette offer **新增需求**: paste source text, ask the configured Codex CLI to organize it, review/edit the candidates, then import. Organization is read-only with tools disabled and a three-minute timeout; errors preserve the input. Only source text and configured product names are sent to the model. Generated content requires review.
 
 Import persists the entire batch atomically, creates one idle task per mapped repository, and retains the original source. Manual tasks use N-prefixed local numbers, survive ZenTao synchronization, and never auto-run on import or link to ZenTao. Deletion cannot restore them through synchronization. They use the existing execution, verification and MR workflow; MR descriptions identify the manual origin. Local fixture tests cover organization and persistence; live model and native desktop validation remain environment-dependent.

@@ -18,6 +18,20 @@ async fn desktop_call(
         return updater::call(&app, state.inner(), &op, args).await;
     }
     match op.as_str() {
+        "openWorkdir" => {
+            let target = state.inner().call("workdirTarget", args.clone()).await?;
+            let path = target.as_str().ok_or("工作目录不存在")?;
+            if args["editor"].as_bool() == Some(true) {
+                let normalized = path.replace('\\', "/");
+                let mut url = url::Url::parse("vscode://file/").map_err(|e| e.to_string())?;
+                let line = args["line"].as_u64().filter(|n| *n > 0);
+                url.set_path(&format!("/{}{}", normalized.trim_start_matches('/'), line.map(|n| format!(":{n}")).unwrap_or_default()));
+                app.opener().open_url(url.as_str(), None::<&str>).map_err(|e| e.to_string())?;
+            } else {
+                app.opener().open_path(path, None::<&str>).map_err(|e| e.to_string())?;
+            }
+            Ok(Value::Null)
+        }
         "attachment" => {
             let path = state.inner().call(&op, args).await?;
             app.opener()

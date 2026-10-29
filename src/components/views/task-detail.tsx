@@ -3,18 +3,20 @@ import { openExternal } from "@/store/actions";
 import { motion } from "motion/react";
 import { useEffect } from "react";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Calendar, Copy, Ellipsis, ExternalLink, GitBranch, GitMerge, GitPullRequest, Link, Pause, Play, RotateCcw, Square, TriangleAlert, Check, SearchX, Trash } from "@/lib/icons";
+import { Code, FolderOpen, ArrowLeft, Calendar, Copy, Ellipsis, ExternalLink, GitBranch, GitMerge, GitPullRequest, Link, Pause, Play, RotateCcw, TriangleAlert, Check, SearchX, Trash } from "@/lib/icons";
 import { useApp } from "@/store/state";
 import { PRIORITY_LABEL } from "@/data/types";
 import { personName } from "@/data/identity";
-import { clearUnread, createMr, deleteTask, pauseRun, resumeRun, retryRun, setTab, stopRun } from "@/store/actions";
+import { refreshDiff, openFolder, openInEditor, clearUnread, createMr, deleteTask, retryRun, setTab } from "@/store/actions";
 import { toast } from "@/store/toast";
 import { useNow, isTyping } from "@/lib/hooks";
 import { dueLabel, fmtDuration } from "@/lib/time";
 import { copyText } from "@/lib/clipboard";
 import { Avatar, KindIcon, PriorityIcon, StatePill } from "@/components/ui/status";
 import { Button } from "@/components/ui/button";
-import { DropMenu } from "@/components/ui/menu";
+import { Kbd } from "@/components/ui/kbd";
+import { DropMenu, type MenuEntry } from "@/components/ui/menu";
+import { workDirs } from "@/lib/workdir";
 import { Tip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/ui/empty";
 import { ShimmerText } from "@/components/magic/effects";
@@ -53,7 +55,7 @@ function Actions({ task }: { task: ZTask }) {
   const now = useNow(s === "running" ? 1000 : 60_000);
   const add = run.files.reduce((a, f) => a + f.add, 0);
   const del = run.files.reduce((a, f) => a + f.del, 0);
-  const elapsed = run.startedAt ? fmtDuration((s === "running" || s === "paused" || s === "waiting" || s === "queued" ? now : run.finishedAt ?? now) - run.startedAt) : null;
+  const elapsed = run.startedAt ? fmtDuration((s === "running" || s === "stopped" || s === "waiting" || s === "queued" ? now : run.finishedAt ?? now) - run.startedAt) : null;
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -68,23 +70,13 @@ function Actions({ task }: { task: ZTask }) {
         </Button>
       )}
       {s === "running" && (
-        <>
-          <Button variant="secondary" onClick={() => pauseRun(task.id)}><Pause />暂停</Button>
-          <Button variant="ghost" onClick={() => stopRun(task.id)}><Square />终止</Button>
-        </>
+        <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">按 <Kbd keys={["esc"]} /> 或点输入框的停止键可以随时停下</span>
       )}
       {s === "waiting" && (
-        <>
-          <Button variant="secondary" disabled><Pause />暂停</Button>
-          <Button variant="ghost" onClick={() => stopRun(task.id)}><Square />终止</Button>
-          <span className="inline-flex items-center gap-1.5 text-sm text-warning"><TriangleAlert className="size-4" />{run.verify?.state === "awaiting-plan" ? "测试计划等你确认" : "有一条命令等你审批"}</span>
-        </>
+        <span className="inline-flex items-center gap-1.5 text-sm text-warning"><TriangleAlert className="size-4" />{run.verify?.state === "awaiting-plan" ? "测试计划等你确认" : "有一条命令等你审批"}</span>
       )}
-      {s === "paused" && (
-        <>
-          <Button variant="primary" onClick={() => resumeRun(task.id)}><Play />恢复执行</Button>
-          <Button variant="ghost" onClick={() => stopRun(task.id)}><Square />终止</Button>
-        </>
+      {s === "stopped" && (
+        <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">已停止，已有的改动都保留。发消息或点「继续」接着做</span>
       )}
       {s === "review" && (
         <>
@@ -97,7 +89,6 @@ function Actions({ task }: { task: ZTask }) {
             <span className="text-sm text-success" role="status">MR 已创建</span>
           </>}
           <Button variant="secondary" onClick={() => document.getElementById("composer")?.focus()}>要求修改</Button>
-          <Button variant="ghost" onClick={() => stopRun(task.id)}>丢弃</Button>
         </>
       )}
       {s === "done" && (
@@ -113,7 +104,6 @@ function Actions({ task }: { task: ZTask }) {
       {s === "failed" && (
         <>
           <Button variant="primary" onClick={() => retryRun(task.id)}><RotateCcw />重试</Button>
-          <Button variant="ghost" onClick={() => stopRun(task.id)}>丢弃</Button>
         </>
       )}
       {(run.events.length > 0 || run.files.length > 0) && (
@@ -133,11 +123,20 @@ function Actions({ task }: { task: ZTask }) {
 export function TaskDetail({ id, onBack }: { id: string; onBack?: () => void }) {
   const task = useApp((s) => s.tasks.find((t) => t.id === id));
   const tab = useApp((s) => s.tab);
+  const mappings = useApp((s) => s.config.mappings);
   const unread = task?.run.unread;
 
   useEffect(() => {
     if (task && unread) clearUnread(id);
   }, [id, unread]);
+
+  useEffect(() => {
+    const refresh = () => refreshDiff(id);
+    refresh();
+    window.addEventListener("focus", refresh);
+    const timer = window.setInterval(refresh, 5000);
+    return () => { window.removeEventListener("focus", refresh); window.clearInterval(timer); };
+  }, [id]);
 
   // 1 / 2 / 3 / 4 切换页签
   useEffect(() => {
@@ -168,6 +167,16 @@ export function TaskDetail({ id, onBack }: { id: string; onBack?: () => void }) 
   }
 
   const run = task.run;
+  const dirs = workDirs(task, mappings);
+  const noDir = run.state === "idle" || !!run.cleaned;
+  const suffix = (d: { name: string }) => (dirs.length > 1 ? ` · ${d.name}` : "");
+  const dirEntries: MenuEntry[] = dirs.length
+    ? [
+        ...dirs.map((d) => ({ label: `在 VS Code 中打开${suffix(d)}${noDir ? (run.cleaned ? "（已清理）" : "（尚未开始）") : ""}`, icon: Code, disabled: noDir, onClick: () => openInEditor(task.id, { repo: d.repo }) })),
+        ...dirs.map((d) => ({ label: `在文件夹中打开${suffix(d)}`, icon: FolderOpen, disabled: noDir, onClick: () => openFolder(task.id, d.repo) })),
+        { label: dirs.length > 1 ? "复制工作目录路径" : "复制路径", icon: Copy, disabled: noDir, onClick: () => copyText(dirs.map((d) => d.path).join("\n"), "已复制路径") },
+      ]
+    : [];
   const due = task.deadline && task.run.state !== "done" ? dueLabel(task.deadline) : null;
   const diffAdd = run.files.reduce((a, f) => a + f.add, 0);
   const diffDel = run.files.reduce((a, f) => a + f.del, 0);
@@ -198,11 +207,12 @@ export function TaskDetail({ id, onBack }: { id: string; onBack?: () => void }) 
               buttonProps={{ "aria-label": "更多操作" }}
               trigger={<Ellipsis className="size-4" />}
               entries={[
+                ...dirEntries,
+                ...(dirEntries.length ? [{ separator: true } as const] : []),
                 { label: "复制分支名", icon: GitBranch, disabled: !run.branch, onClick: () => run.branch && copyText(run.branch, "已复制分支名") },
                 ...(task.manual ? [] : [{ label: "复制禅道链接", icon: Link, onClick: () => copyText(`${store.get().config.zentao.baseUrl}/${task.kind}-view-${task.no}.html`, "已复制禅道链接") }]),
                 { separator: true },
                 { label: "删除任务…", icon: Trash, danger: true, onClick: () => deleteTask(task.id) },
-                { label: "终止并丢弃本次执行…", icon: Square, danger: true, disabled: run.state === "idle", onClick: () => stopRun(task.id) },
               ]}
             />
           </div>

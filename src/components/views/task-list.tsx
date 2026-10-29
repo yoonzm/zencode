@@ -349,7 +349,7 @@ export function TaskListPane({ className }: { className?: string }) {
           label="状态"
           value={filters.states}
           onChange={(states) => setFilters({ states })}
-          options={(["waiting", "failed", "review", "running", "paused", "queued", "idle", "done"] as RunState[]).map((s) => ({ value: s, label: STATE_LABEL[s], icon: <StateIcon state={s} className="size-3.5" /> }))}
+          options={(["waiting", "failed", "review", "running", "stopped", "queued", "idle", "done"] as RunState[]).map((s) => ({ value: s, label: STATE_LABEL[s], icon: <StateIcon state={s} className="size-3.5" /> }))}
         />
         <FilterChip<Priority>
           label="优先级"

@@ -122,7 +122,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   }, [tasks]);
   const recent = useMemo(
     () =>
-      sortTasks(tasks.filter((t) => (["running", "waiting", "paused", "queued", "failed", "review"] as RunState[]).includes(t.run.state)), "updated"),
+      sortTasks(tasks.filter((t) => (["running", "waiting", "stopped", "queued", "failed", "review"] as RunState[]).includes(t.run.state)), "updated"),
     [tasks],
   );
   const [showAllRecent, setShowAllRecent] = useState(false);

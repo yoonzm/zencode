@@ -27,6 +27,7 @@ struct Job {
     finished: Notify,
     verify_decision: Mutex<Option<bool>>,
     verify_ready: Notify,
+    pending: Mutex<Option<Vec<String>>>,
 }
 impl Job {
     fn new() -> Self {
@@ -40,6 +41,7 @@ impl Job {
             finished: Notify::new(),
             verify_decision: Mutex::new(None),
             verify_ready: Notify::new(),
+            pending: Mutex::new(Some(Vec::new())),
         }
     }
 }
@@ -154,7 +156,7 @@ impl Runtime {
     }
     pub async fn call(self: &Arc<Self>, op: &str, args: Value) -> Result<Value> {
         // A deletion must not race a sync merge, a new run, or MR submission.
-        let _mutation = if matches!(op, "importManual" | "sync" | "delete" | "start" | "reverify" | "mr" | "cleanup" | "resumeAfterUpdate" | "verificationToolStart") {
+        let _mutation = if matches!(op, "refreshDiff" | "importManual" | "sync" | "delete" | "start" | "reverify" | "mr" | "cleanup" | "resumeAfterUpdate" | "verificationToolStart") {
             Some(self.task_mutations.lock().await)
         } else {
             None
@@ -442,6 +444,37 @@ impl Runtime {
                 .await?;
                 Ok(Value::Null)
             }
+            "workdirTarget" => {
+                let task = self.task(text(&args, "id")).await?;
+                let raw = text(&task["run"], "worktree");
+                if raw.is_empty() || task["run"]["cleaned"].as_bool() == Some(true) { return Err("任务尚无工作目录或已清理".into()); }
+                let root = std::fs::canonicalize(raw).map_err(|e| e.to_string())?;
+                let file = text(&args, "file");
+                let path = std::fs::canonicalize(root.join(file)).map_err(|e| e.to_string())?;
+                if !path.starts_with(&root) { return Err("文件不在任务工作目录中".into()); }
+                Ok(json!(path.to_string_lossy().trim_start_matches("\\\\?\\")))
+            }
+            "refreshDiff" => {
+                let id = text(&args, "id");
+                if self.jobs.lock().await.contains_key(id) { return Ok(Value::Null); }
+                let before = self.task(id).await?;
+                if text(&before["run"], "worktree").is_empty() || before["run"]["cleaned"].as_bool() == Some(true) { return Ok(Value::Null); }
+                let previous = text(&before["run"], "rawDiff").to_owned();
+                let current = self.diff(id).await?;
+                if current != previous {
+                    let mut manual = before["run"]["manualFiles"].as_array().cloned().unwrap_or_default();
+                    for part in current.split("diff --git ").skip(1) {
+                        if !previous.split("diff --git ").any(|old| old == part) {
+                            if let Some(path) = part.lines().find_map(|line| line.strip_prefix("+++ b/").or_else(|| line.strip_prefix("--- a/"))) {
+                                let value = json!(path);
+                                if !manual.contains(&value) { manual.push(value); }
+                            }
+                        }
+                    }
+                    self.update(id, |t| { t["run"]["manualFiles"] = json!(manual); t["run"]["viewed"] = json!([]); }).await?;
+                }
+                Ok(Value::Null)
+            }
             "pause" | "stop" => {
                 let id = text(&args, "id");
                 let job = self
@@ -453,8 +486,19 @@ impl Runtime {
                     .ok_or("没有活动执行")?;
                 job.stopped.store(op == "stop", Ordering::SeqCst);
                 job.paused.store(op == "pause", Ordering::SeqCst);
+                job.cancel_queue.notify_one();
                 job.verify_ready.notify_one();
                 if let Some(session) = job.session.lock().await.clone() {
+                    for (_, rpc) in job.approvals.lock().await.drain() {
+                        session.send(json!({"id":rpc,"result":{"decision":"decline"}})).await?;
+                    }
+                    self.update(id, |t| {
+                        if let Some(events) = t["run"]["events"].as_array_mut() {
+                            for event in events {
+                                if event["kind"] == "approval" && event["decision"].is_null() { event["decision"] = json!("deny"); }
+                            }
+                        }
+                    }).await?;
                     let turn = job.turn.lock().await.clone();
                     if !turn.is_empty() {
                         let task = self.task(id).await?;
@@ -593,19 +637,15 @@ impl Runtime {
     async fn enqueue(self: &Arc<Self>, id: &str, config: Value, instruction: String) -> Result<()> {
         let t = self.task(id).await?;
         if let Some(job) = self.jobs.lock().await.get(id).cloned() {
-            if text(&t["run"]["verify"], "state") == "awaiting-plan" {
-                return Err("请先确认或跳过测试计划".into());
-            }
-            let session = job
-                .session
-                .lock()
-                .await
-                .clone()
-                .ok_or("任务正在排队或启动，请稍后追加指令")?;
-            let turn = job.turn.lock().await.clone();
-            session.request("turn/steer",json!({"threadId":t["run"]["threadId"],"expectedTurnId":turn,"input":[{"type":"text","text":instruction,"text_elements":[]}]})).await?;
-            self.event(id, json!({"kind":"user","text":instruction}))
-                .await?;
+            if instruction.trim().is_empty() { return Ok(()); }
+            let mut pending = job.pending.lock().await;
+            if job.paused.load(Ordering::SeqCst) || job.stopped.load(Ordering::SeqCst) { return Err("正在停止，请稍后继续".into()); }
+            let queue = pending.as_mut().ok_or("执行正在收尾，请稍后追加指令")?;
+            queue.push(instruction.clone());
+            self.update(id, |t| {
+                t["run"]["pendingInstructions"] = json!(queue);
+                push_event(t, json!({"kind":"user","text":instruction}));
+            }).await?;
             return Ok(());
         }
         if !t["run"]["mr"].is_null() {
@@ -622,8 +662,11 @@ impl Runtime {
             .cloned()
             .ok_or("请先配置此产品的仓库映射")?;
         let job = Arc::new(Job::new());
+        let saved = t["run"]["pendingInstructions"].as_array().map(|xs| xs.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("\n")).unwrap_or_default();
+        let instruction = [saved, instruction].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n");
         self.jobs.lock().await.insert(id.into(), job.clone());
         self.update(id, |t| {
+            t["run"]["pendingInstructions"] = json!([]);
             t["run"]["state"] = json!("queued");
             t["run"]["startedAt"] = json!(now());
             t["run"]["finishedAt"] = Value::Null;
@@ -647,6 +690,7 @@ impl Runtime {
             }
             if let Err(e) = result {
                 let paused = job.paused.load(Ordering::SeqCst);
+                let _ = rt.diff(&id).await;
                 let _ = rt
                     .update(&id, |t| {
                         t["run"]["state"] = json!(if paused { "paused" } else { "failed" });
@@ -824,6 +868,16 @@ impl Runtime {
                             .into());
                     }
                     if job.stopped.load(Ordering::SeqCst) || job.paused.load(Ordering::SeqCst) { return Err("验证已中断，工作区保留".into()); }
+                    let queued = job.pending.lock().await.take().unwrap_or_default();
+                    if !queued.is_empty() {
+                        phase = "code";
+                        response_text.clear();
+                        self.update(id, |t| { t["run"]["pendingInstructions"] = json!([]); t["run"]["verify"] = Value::Null; t["run"]["state"] = json!("running"); }).await?;
+                        *job.pending.lock().await = Some(Vec::new());
+                        let next = session.request("turn/start", json!({"threadId":thread,"effort":effort,"input":[{"type":"text","text":queued.join("\n"),"text_elements":[]}]})).await?;
+                        *job.turn.lock().await = text(&next["turn"], "id").into();
+                        continue;
+                    }
                     if phase == "code" && !enabled {
                         self.update(id, |t| t["run"]["verify"] = crate::verification::empty("unverified", "产品验证已关闭或未填写验证说明；代码自检见执行过程。")).await?;
                         break;
@@ -866,6 +920,7 @@ impl Runtime {
                         self.update(id, |t| t["run"]["verify"] = crate::verification::empty("planning", "正在制定测试计划")).await?;
                     }
                     response_text.clear();
+                    *job.pending.lock().await = Some(Vec::new());
                     let turn = session.request("turn/start", json!({"threadId":thread,"effort":effort,"input":[{"type":"text","text":prompt,"text_elements":[]}]})).await?;
                     *job.turn.lock().await = text(&turn["turn"], "id").into();
                     if job.stopped.load(Ordering::SeqCst) || job.paused.load(Ordering::SeqCst) { return Err("验证已中断，工作区保留".into()); }
@@ -940,6 +995,9 @@ impl Runtime {
     }
     async fn diff(&self, id: &str) -> Result<String> {
         let t = self.task(id).await?;
+        if text(&t["run"], "worktree").is_empty() || text(&t["run"], "base").is_empty() {
+            return Err("任务工作目录尚未就绪".into());
+        }
         let cwd = PathBuf::from(text(&t["run"], "worktree"));
         command("git", &["add", "-N", "--", "."], Some(&cwd)).await?;
         let diff = command(

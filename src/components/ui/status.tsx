@@ -1,5 +1,5 @@
 import { cn, hueOf } from "@/lib/utils";
-import { Bug, CircleAlert, CircleCheck, CircleDashed, CircleDot, CirclePause, CircleX, Clock, Lightbulb, Loader } from "@/lib/icons";
+import { Bug, CircleAlert, CircleCheck, CircleDashed, CircleDot, CircleStop, CircleX, Clock, Lightbulb, Loader } from "@/lib/icons";
 import { STATE_LABEL, type Priority, type RunState, type TaskKind } from "@/data/types";
 import { personName } from "@/data/identity";
 
@@ -10,7 +10,7 @@ export const STATE_TONE: Record<RunState, string> = {
   queued: "text-muted-foreground",
   running: "text-accent",
   waiting: "text-warning",
-  paused: "text-muted-foreground",
+  stopped: "text-muted-foreground",
   review: "text-accent",
   done: "text-success",
   failed: "text-danger",
@@ -21,7 +21,7 @@ const STATE_BG: Record<RunState, string> = {
   queued: "bg-muted text-muted-foreground",
   running: "bg-accent/12 text-accent",
   waiting: "bg-warning/14 text-warning",
-  paused: "bg-muted text-muted-foreground",
+  stopped: "bg-muted text-muted-foreground",
   review: "bg-accent/12 text-accent",
   done: "bg-success/12 text-success",
   failed: "bg-danger/12 text-danger",
@@ -36,8 +36,8 @@ export function StateIcon({ state, className }: { state: RunState; className?: s
       return <Clock className={c} aria-hidden />;
     case "waiting":
       return <CircleAlert className={c} aria-hidden />;
-    case "paused":
-      return <CirclePause className={c} aria-hidden />;
+    case "stopped":
+      return <CircleStop className={c} aria-hidden />;
     case "review":
       return <CircleDot className={c} aria-hidden />;
     case "done":

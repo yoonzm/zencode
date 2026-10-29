@@ -29,11 +29,18 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
  if(m==='thread/resume'||m==='thread/start') send({id:r.id,result:{thread:{id:'fixture'}}});
  if(m==='turn/start') {
   const id='turn-'+(++seq), prompt=p.input[0].text;
+  require('node:fs').appendFileSync('prompts.log',JSON.stringify(prompt)+'\n');
   send({id:r.id,result:{turn:{id}}});
+  if(prompt==='stop-fixture') return;
+  if(prompt==='queue-fixture') { setTimeout(()=>send({method:'turn/completed',params:{turn:{id,status:'completed'}}}),500); return; }
   const plan=prompt.includes('不执行验证');
   const result={state:'passed',summary:'fixture report',steps:[{id:'1',title:'Check fixture',expect:'ok',status:plan?'pending':'passed',note:plan?'':'fixture evidence'}]};
   send({method:'item/completed',params:{item:{id:'msg-'+seq,type:'agentMessage',text:JSON.stringify(result)}}});
   send({method:'turn/completed',params:{turn:{id,status:'completed'}}});
+ }
+ if(m==='turn/interrupt') {
+  send({id:r.id,result:{}});
+  send({method:'turn/completed',params:{turn:{id:p.turnId,status:'interrupted'}}});
  }
 });
 "#;
@@ -105,4 +112,53 @@ async fn disabled_verification_does_not_wait_for_plan() {
     rt.call("start",json!({"id":"bug-1","config":config})).await.unwrap();
     assert_eq!(wait(&rt,"review").await["run"]["verify"]["state"],"unverified");
     rt.shutdown().await;
+}
+
+#[tokio::test]
+async fn queued_message_runs_in_next_turn() {
+    let (dir,rt,mut config) = fixture().await;
+    config["mappings"][0]["verify"]["enabled"] = json!(false);
+    rt.call("start",json!({"id":"bug-1","config":config,"instruction":"queue-fixture"})).await.unwrap();
+    wait(&rt,"running").await;
+    rt.call("start",json!({"id":"bug-1","config":config,"instruction":"follow-up"})).await.unwrap();
+    wait(&rt,"review").await;
+    let prompts = std::fs::read_to_string(dir.path().join("repo/prompts.log")).unwrap();
+    assert_eq!(prompts.lines().collect::<Vec<_>>(), vec!["\"queue-fixture\"", "\"follow-up\""]);
+    assert_eq!(rt.data.lock().await["tasks"][0]["run"]["pendingInstructions"],json!([]));
+    rt.shutdown().await;
+}
+
+#[tokio::test]
+async fn workspace_paths_and_manual_diff_refresh() {
+    let (dir,rt,_) = fixture().await;
+    let repo = dir.path().join("repo");
+    std::fs::write(repo.join("manual.txt"),"manual change\n").unwrap();
+    std::fs::write(dir.path().join("outside.txt"),"outside\n").unwrap();
+    assert!(rt.call("workdirTarget",json!({"id":"bug-1","file":"manual.txt"})).await.is_ok());
+    assert!(rt.call("workdirTarget",json!({"id":"bug-1","file":"../outside.txt"})).await.is_err());
+    rt.call("refreshDiff",json!({"id":"bug-1"})).await.unwrap();
+    let task = rt.data.lock().await["tasks"][0].clone();
+    assert_eq!(task["run"]["manualFiles"],json!(["manual.txt"]));
+    assert!(task["run"]["rawDiff"].as_str().unwrap().contains("manual change"));
+    rt.call("refreshDiff",json!({"id":"bug-1"})).await.unwrap();
+    assert_eq!(rt.data.lock().await["tasks"][0]["run"]["manualFiles"],json!(["manual.txt"]));
+}
+
+#[tokio::test]
+async fn stop_preserves_pending_message_for_continue() {
+    let (dir,rt,mut config) = fixture().await;
+    config["mappings"][0]["verify"]["enabled"] = json!(false);
+    rt.call("start",json!({"id":"bug-1","config":config,"instruction":"stop-fixture"})).await.unwrap();
+    wait(&rt,"running").await;
+    rt.call("start",json!({"id":"bug-1","config":config,"instruction":"after-stop"})).await.unwrap();
+    rt.call("pause",json!({"id":"bug-1"})).await.unwrap();
+    let stopped = wait(&rt,"paused").await;
+    assert_eq!(stopped["run"]["pendingInstructions"],json!(["after-stop"]));
+    rt.shutdown().await;
+    let resumed = Runtime::new(dir.path().join("data"),Arc::new(|_,_| {})).unwrap();
+    resumed.call("start",json!({"id":"bug-1","config":config})).await.unwrap();
+    wait(&resumed,"review").await;
+    let prompts = std::fs::read_to_string(dir.path().join("repo/prompts.log")).unwrap();
+    assert!(prompts.lines().any(|line| line == "\"after-stop\""));
+    resumed.shutdown().await;
 }

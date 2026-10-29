@@ -255,7 +255,7 @@ export function Timeline({ task }: { task: ZTask }) {
           icon={Play}
           pattern
           title="还没有开始"
-          desc="交给 Codex 后，这里会按时间顺序记录它读了什么、改了什么、跑了哪些命令。你可以随时暂停，或追加指令。"
+          desc="交给 Codex 后，这里会按时间顺序记录它读了什么、改了什么、跑了哪些命令。你可以随时停止，或追加指令。"
           actions={<Button variant="primary" onClick={() => startRun(task.id)}><Play />交给 Codex 执行</Button>}
           className="pt-14"
         />
