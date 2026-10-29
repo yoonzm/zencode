@@ -3,6 +3,8 @@ import { Bug, CircleAlert, CircleCheck, CircleDashed, CircleDot, CirclePause, Ci
 import { STATE_LABEL, type Priority, type RunState, type TaskKind } from "@/data/types";
 import { personName } from "@/data/identity";
 
+import { Avatar as HAvatar, Chip } from "@heroui/react";
+
 export const STATE_TONE: Record<RunState, string> = {
   idle: "text-subtle-foreground",
   queued: "text-muted-foreground",
@@ -49,10 +51,10 @@ export function StateIcon({ state, className }: { state: RunState; className?: s
 
 export function StatePill({ state, className, compact }: { state: RunState; className?: string; compact?: boolean }) {
   return (
-    <span className={cn("inline-flex h-5 shrink-0 items-center gap-1 rounded-full px-1.5 text-xs font-medium", STATE_BG[state], className)}>
+    <Chip.Root size="sm" className={cn("h-5 gap-1 rounded-full px-1.5", STATE_BG[state], className)}>
       <StateIcon state={state} className={cn("size-3", "text-current")} />
-      {!compact && STATE_LABEL[state]}
-    </span>
+      {!compact && <Chip.Label className="px-0">{STATE_LABEL[state]}</Chip.Label>}
+    </Chip.Root>
   );
 }
 
@@ -88,14 +90,14 @@ export function PriorityIcon({ p, className }: { p: Priority; className?: string
 export function Avatar({ id, size = 20, className }: { id: string; size?: number; className?: string }) {
   const name = personName(id);
   return (
-    <span
-      className={cn("avatar inline-grid shrink-0 place-items-center rounded-full font-medium leading-none", className)}
+    <HAvatar.Root
+      className={cn("zc-avatar shrink-0 rounded-full", className)}
       style={{ width: size, height: size, fontSize: Math.round(size * 0.46), ["--h" as any]: hueOf(id) }}
       title={name}
       role="img"
       aria-label={name}
     >
-      {name.slice(-2)}
-    </span>
+      <HAvatar.Fallback className="grid size-full place-items-center rounded-full bg-transparent font-medium leading-none" style={{ fontSize: "inherit", color: "inherit" }}>{name.slice(-2)}</HAvatar.Fallback>
+    </HAvatar.Root>
   );
 }

@@ -1,4 +1,9 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "@heroui/styles/components/chip.css";
+@import "@heroui/styles/components/avatar.css";
+
+@custom-variant dark (&:is(.dark *));
 
 /* ───────────────────────────────────────────────────────────────
    ZenCode 设计令牌
@@ -53,9 +58,11 @@
   --radius:10px;
 }
 
-/*@DARK_MEDIA@*/
-/*@DARK_ATTR@*/
-/*@DARK_SCOPE@*/
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --background:#1a1b18;--surface:#141512;--surface-2:#1b1c19;--card:#1f201c;--popover:#262723;--muted:#2a2b27;--hover:#ffffff0d;--active:#ffffff14;--foreground:#ecece6;--muted-foreground:#a5a79d;--subtle-foreground:#7b7d73;--border:#2c2d29;--border-strong:#3d3e38;--ring:#8fa5ee;--primary:#ecece6;--primary-foreground:#151613;--accent:#8fa5ee;--accent-foreground:#10162e;--accent-soft:#21273f;--success:#5cc48c;--warning:#e3a94b;--danger:#f08272;--diff-add-bg:#16291f;--diff-add-gutter:#1f3b2c;--diff-del-bg:#2e1a18;--diff-del-gutter:#45261f;--syn-keyword:#c8a6f2;--syn-string:#82d3a7;--syn-number:#f0a664;--syn-comment:#7e8076;--syn-fn:#8fb4f5;--syn-type:#6cd0e3;--syn-attr:#e3a94b;--scroll-thumb:#ffffff24;--av-bg-l:0.34;--av-fg-l:0.9;--elev-pop:0 14px 44px #00000080,0 0 0 1px #3d3e38;--elev-sm:0 1px 2px #00000066;--scrim:#0000008c; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --background:#1a1b18;--surface:#141512;--surface-2:#1b1c19;--card:#1f201c;--popover:#262723;--muted:#2a2b27;--hover:#ffffff0d;--active:#ffffff14;--foreground:#ecece6;--muted-foreground:#a5a79d;--subtle-foreground:#7b7d73;--border:#2c2d29;--border-strong:#3d3e38;--ring:#8fa5ee;--primary:#ecece6;--primary-foreground:#151613;--accent:#8fa5ee;--accent-foreground:#10162e;--accent-soft:#21273f;--success:#5cc48c;--warning:#e3a94b;--danger:#f08272;--diff-add-bg:#16291f;--diff-add-gutter:#1f3b2c;--diff-del-bg:#2e1a18;--diff-del-gutter:#45261f;--syn-keyword:#c8a6f2;--syn-string:#82d3a7;--syn-number:#f0a664;--syn-comment:#7e8076;--syn-fn:#8fb4f5;--syn-type:#6cd0e3;--syn-attr:#e3a94b;--scroll-thumb:#ffffff24;--av-bg-l:0.34;--av-fg-l:0.9;--elev-pop:0 14px 44px #00000080,0 0 0 1px #3d3e38;--elev-sm:0 1px 2px #00000066;--scrim:#0000008c; color-scheme: dark; }
+.theme-dark { --background:#1a1b18;--surface:#141512;--surface-2:#1b1c19;--card:#1f201c;--popover:#262723;--muted:#2a2b27;--hover:#ffffff0d;--active:#ffffff14;--foreground:#ecece6;--muted-foreground:#a5a79d;--subtle-foreground:#7b7d73;--border:#2c2d29;--border-strong:#3d3e38;--ring:#8fa5ee;--primary:#ecece6;--primary-foreground:#151613;--accent:#8fa5ee;--accent-foreground:#10162e;--accent-soft:#21273f;--success:#5cc48c;--warning:#e3a94b;--danger:#f08272;--diff-add-bg:#16291f;--diff-add-gutter:#1f3b2c;--diff-del-bg:#2e1a18;--diff-del-gutter:#45261f;--syn-keyword:#c8a6f2;--syn-string:#82d3a7;--syn-number:#f0a664;--syn-comment:#7e8076;--syn-fn:#8fb4f5;--syn-type:#6cd0e3;--syn-attr:#e3a94b;--scroll-thumb:#ffffff24;--av-bg-l:0.34;--av-fg-l:0.9;--elev-pop:0 14px 44px #00000080,0 0 0 1px #3d3e38;--elev-sm:0 1px 2px #00000066;--scrim:#0000008c; color-scheme: dark; }
 
 /* Windows：系统字体顺序、圆角与滚动条习惯不同 */
 html[data-platform="win"] {
@@ -65,6 +72,18 @@ html[data-platform="win"] {
 }
 
 @theme inline {
+  --color-default: var(--default);
+  --color-default-foreground: var(--default-foreground);
+  --color-default-soft: var(--default-soft);
+  --color-default-soft-foreground: var(--default-soft-foreground);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-soft-foreground: var(--accent-soft-foreground);
+  --color-success-soft: var(--success-soft);
+  --color-success-soft-foreground: var(--success-soft-foreground);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-soft-foreground: var(--warning-soft-foreground);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-soft-foreground: var(--danger-soft-foreground);
   --color-background: var(--background);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
@@ -120,6 +139,16 @@ html[data-platform="win"] {
   --text-2xl--line-height: 2rem;
 
   --ease-out-soft: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  --animate-shiny-text:shiny-text 8s infinite;
+  @keyframes shiny-text {
+  0%, 90%, 100% {
+    background-position:calc(-100% - var(--shiny-width)) 0;
+    }
+  30%, 60% {
+    background-position:calc(100% + var(--shiny-width)) 0;
+    }
+  }
 }
 
 html, body { height: 100%; }
@@ -168,7 +197,7 @@ body {
 html[data-platform="win"] *::-webkit-scrollbar-thumb { border-width: 2px; border-radius: 4px; }
 
 /* 头像：色相由内联变量 --h 提供，亮度来自主题令牌 */
-.avatar {
+.zc-avatar {
   background: oklch(var(--av-bg-l) 0.07 var(--h));
   color: oklch(var(--av-fg-l) 0.09 var(--h));
 }
@@ -234,4 +263,23 @@ html[data-platform="win"] *::-webkit-scrollbar-thumb { border-width: 2px; border
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
   .beam::before { display: none; }
+}
+/* HeroUI 组件所需的变量，全部由项目语义令牌派生，主题随之切换 */
+:root {
+  --default: var(--muted);
+  --default-foreground: var(--muted-foreground);
+  --default-soft: var(--muted);
+  --default-soft-foreground: var(--muted-foreground);
+  --accent-soft: color-mix(in oklab, var(--accent) 12%, transparent);
+  --accent-soft-foreground: var(--accent);
+  --success-soft: color-mix(in oklab, var(--success) 12%, transparent);
+  --success-soft-foreground: var(--success);
+  --warning-soft: color-mix(in oklab, var(--warning) 14%, transparent);
+  --warning-soft-foreground: var(--warning);
+  --danger-soft: color-mix(in oklab, var(--danger) 12%, transparent);
+  --danger-soft-foreground: var(--danger);
+  --accent-foreground: #fff;
+  --success-foreground: #fff;
+  --warning-foreground: #fff;
+  --danger-foreground: #fff;
 }

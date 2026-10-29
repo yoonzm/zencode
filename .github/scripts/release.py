@@ -61,7 +61,7 @@ Type checking, automated tests and builds passed. Windows installation/startup s
 
 **Validation limits:** Installers are unsigned and macOS builds are not notarized. Live authenticated ZenTao → Codex → GitLab end-to-end execution, native credential-vault roundtrips, interactive macOS flows and visual parity remain unverified. The cloud browser blocked visual comparison. Codex handshake passed with an empty writable configuration; this is not authenticated model execution. Install and authenticate Codex CLI separately.
 
-ZenTao writeback adds only the MR link; it does not change task status or fix version. Unsupported API/interaction variants return errors. This release is not a claim of complete production acceptance.
+MR submission does not write links, comments, task status or fix versions to ZenTao. Unsupported API/interaction variants return errors. This release is not a claim of complete production acceptance.
 
 SHA256SUMS.txt contains installer checksums.
 ''')

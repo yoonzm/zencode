@@ -1,4 +1,5 @@
-import { useSyncExternalStore } from "react";
+import { createStore as createZustandStore, type StoreApi } from "zustand/vanilla";
+import { useStore as useZustandStore } from "zustand";
 
 export interface Store<T> {
   get(): T;
@@ -6,25 +7,18 @@ export interface Store<T> {
   subscribe(fn: () => void): () => void;
 }
 
-/** 极小的外部状态容器：不可变更新 + useSyncExternalStore */
-export function createStore<T extends object>(initial: T): Store<T> {
-  let state = initial;
-  const subs = new Set<() => void>();
+/** 基于 zustand 的外部状态容器；保留 get / set / subscribe 的简单接口。 */
+export function createStore<T extends object>(initial: T): Store<T> & { api: StoreApi<T> } {
+  const api = createZustandStore<T>()(() => initial);
   return {
-    get: () => state,
-    set(p) {
-      const patch = typeof p === "function" ? p(state) : p;
-      state = { ...state, ...patch };
-      subs.forEach((f) => f());
-    },
-    subscribe(fn) {
-      subs.add(fn);
-      return () => subs.delete(fn);
-    },
+    api,
+    get: () => api.getState(),
+    set: (p) => api.setState(p as Partial<T> | ((s: T) => Partial<T>)),
+    subscribe: (fn) => api.subscribe(fn),
   };
 }
 
-/** selector 必须返回稳定引用（原始值或 state 中的子对象） */
-export function useStore<T, S>(store: Store<T>, selector: (s: T) => S): S {
-  return useSyncExternalStore(store.subscribe, () => selector(store.get()));
+/** selector 需要返回稳定引用（原始值或 state 中的子对象） */
+export function useStore<T extends object, S>(store: Store<T> & { api: StoreApi<T> }, selector: (s: T) => S): S {
+  return useZustandStore(store.api, selector);
 }

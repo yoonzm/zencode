@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/primitives/popover";
 import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronRight, Inbox, ListFilter, RefreshCw, Search, SearchX, WifiOff, X, Layers, ArrowUpDown, Rows, LayoutList } from "@/lib/icons";
 import { useApp, store } from "@/store/state";
@@ -23,22 +23,18 @@ function FilterChip<T extends string | number>({ label, options, value, onChange
   const on = value.length > 0;
   const summary = value.length === 1 ? options.find((o) => o.value === value[0])?.label : `${value.length} 项`;
   return (
-    <Popover className="relative shrink-0">
-      <PopoverButton
+    <Popover>
+      <PopoverTrigger
         className={cn(
-          "inline-flex h-6 items-center gap-1 rounded-md border px-2 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/60",
+          "inline-flex h-6 shrink-0 items-center gap-1 rounded-md border px-2 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/60",
           on ? "border-accent/35 bg-accent/10 text-accent" : "border-dashed border-border-strong text-muted-foreground hover:border-solid hover:bg-hover hover:text-foreground",
         )}
       >
         {label}
         {on && <span className="max-w-24 truncate">· {summary}</span>}
         <ChevronDown className="size-3 opacity-70" />
-      </PopoverButton>
-      <PopoverPanel
-        anchor={{ to: "bottom start", gap: 6, padding: 8 }}
-        transition
-        className="z-[75] min-w-44 rounded-lg border border-border bg-popover p-1 shadow-pop outline-none transition duration-100 ease-out data-[closed]:scale-[0.97] data-[closed]:opacity-0"
-      >
+      </PopoverTrigger>
+      <PopoverContent align="start" sideOffset={6} collisionPadding={8} className="w-auto min-w-44 rounded-lg border-border bg-popover p-1 shadow-pop">
         <div className="max-h-72 overflow-y-auto">
           {options.map((o) => {
             const sel = value.includes(o.value);
@@ -63,7 +59,7 @@ function FilterChip<T extends string | number>({ label, options, value, onChange
             清除此项
           </button>
         )}
-      </PopoverPanel>
+      </PopoverContent>
     </Popover>
   );
 }

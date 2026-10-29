@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { CircleAlert, CircleCheck, Info, TriangleAlert, X } from "@/lib/icons";
 import { useApp, type Toast } from "@/store/state";
@@ -22,11 +23,16 @@ function ToastItem({ t }: { t: Toast }) {
   }, [hover, t.id]);
   const Icon = ICON[t.tone];
   return (
-    <div
+    <motion.div
+      layout
       role="status"
+      initial={{ opacity: 0, y: 12, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.97, transition: { duration: 0.12 } }}
+      transition={{ type: "spring", stiffness: 520, damping: 40 }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      className="anim-rise pointer-events-auto flex w-full items-start gap-2.5 rounded-xl border border-border bg-popover p-3 pr-2 shadow-pop sm:w-[372px]"
+      className="pointer-events-auto flex w-full items-start gap-2.5 rounded-xl border border-border bg-popover p-3 pr-2 shadow-pop sm:w-[372px]"
     >
       <Icon className={cn("mt-0.5 size-4 shrink-0", TONE[t.tone])} aria-hidden />
       <div className="min-w-0 flex-1">
@@ -55,7 +61,7 @@ function ToastItem({ t }: { t: Toast }) {
       >
         <X className="size-3.5" />
       </button>
-    </div>
+    </motion.div>
   );
 }
 
@@ -63,9 +69,11 @@ export function ToastViewport() {
   const toasts = useApp((s) => s.toasts);
   return (
     <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-0 z-[90] flex flex-col items-center gap-2 p-3 sm:items-end sm:p-4 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))]">
-      {toasts.map((t) => (
-        <ToastItem key={t.id} t={t} />
-      ))}
+      <AnimatePresence mode="popLayout" initial={false}>
+        {toasts.map((t) => (
+          <ToastItem key={t.id} t={t} />
+        ))}
+      </AnimatePresence>
     </div>
   );
 }

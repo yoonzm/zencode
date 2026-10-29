@@ -1,3 +1,4 @@
+import { AnimatePresence, motion } from "motion/react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ArrowDown, ChevronRight, CircleCheck, CircleDashed, CircleX, FilePen, FilePlus, FileSearch, ListChecks, ShieldAlert, ShieldCheck, Sparkles, Terminal, TriangleAlert, Play, Info } from "@/lib/icons";
@@ -24,12 +25,12 @@ const FILTERS: Record<Filter, RunEvent["kind"][] | null> = {
 
 function Rail({ icon, tone, last, children, at }: { icon: any; tone?: string; last?: boolean; children: any; at?: number }) {
   return (
-    <li className="anim-rise relative flex gap-3 pb-3.5">
+    <motion.li initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, ease: "easeOut" }} className="relative flex gap-3 pb-3.5">
       {!last && <span className="absolute bottom-0 left-[9.5px] top-6 w-px bg-border" aria-hidden />}
       <span className={cn("relative z-[1] mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-background", tone ?? "text-muted-foreground")}>{icon}</span>
       <div className="min-w-0 flex-1">{children}</div>
       {at != null && <time className="mt-0.5 hidden shrink-0 font-mono text-[11px] tabular-nums text-subtle-foreground @md:block">{clockTime(at)}</time>}
-    </li>
+    </motion.li>
   );
 }
 
@@ -317,20 +318,27 @@ export function Timeline({ task }: { task: ZTask }) {
           )}
         </ol>
       </div>
+      <AnimatePresence>
       {away && (
-        <button
+        <motion.button
+          key="new-events"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 8 }}
+          transition={{ duration: 0.15 }}
           onClick={() => {
             const el = scroller.current;
             if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
             stick.current = true;
             setAway(false);
           }}
-          className="anim-rise absolute bottom-3 left-1/2 inline-flex h-7 -translate-x-1/2 items-center gap-1.5 rounded-full border border-border bg-popover px-3 text-xs font-medium text-foreground shadow-pop outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/60"
+          className="absolute bottom-3 left-1/2 inline-flex h-7 -translate-x-1/2 items-center gap-1.5 rounded-full border border-border bg-popover px-3 text-xs font-medium text-foreground shadow-pop outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/60"
         >
           <ArrowDown className="size-3.5" />
           有新事件
-        </button>
+        </motion.button>
       )}
+      </AnimatePresence>
     </div>
   );
 }

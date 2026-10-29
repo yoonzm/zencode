@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { useApp } from "@/store/state";
 import { toggleSidebar } from "@/store/actions";
 import { useRoute } from "@/lib/route";
@@ -34,18 +35,42 @@ export function AppShell() {
       {compact && <TitleBar />}
       <div className="relative flex min-h-0 flex-1">
         {!full && !compact && (
-          <div className="h-full shrink-0 overflow-hidden border-r border-border bg-surface transition-[width] duration-200 ease-out" style={{ width: showInline ? SIDEBAR_W : RAIL_W }}>
+          <motion.div
+            className="h-full shrink-0 overflow-hidden border-r border-border bg-surface"
+            initial={false}
+            animate={{ width: showInline ? SIDEBAR_W : RAIL_W }}
+            transition={{ type: "spring", stiffness: 520, damping: 46 }}
+          >
             {showInline ? <Sidebar /> : <SidebarRail />}
-          </div>
+          </motion.div>
         )}
-        {showDrawer && (
-          <>
-            <button aria-label="关闭侧边栏" className="anim-fade fixed inset-0 z-40 bg-scrim" onClick={toggleSidebar} />
-            <aside className="anim-rise fixed bottom-0 left-0 top-10 z-50 border-r border-border bg-surface shadow-pop" style={{ width: SIDEBAR_W }}>
-              <Sidebar onNavigate={toggleSidebar} />
-            </aside>
-          </>
-        )}
+        <AnimatePresence>
+          {showDrawer && (
+            <>
+              <motion.button
+                key="scrim"
+                aria-label="关闭侧边栏"
+                className="fixed inset-0 z-40 bg-scrim"
+                onClick={toggleSidebar}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+              />
+              <motion.aside
+                key="drawer"
+                className="fixed bottom-0 left-0 top-10 z-50 border-r border-border bg-surface shadow-pop"
+                style={{ width: SIDEBAR_W }}
+                initial={{ x: -SIDEBAR_W }}
+                animate={{ x: 0 }}
+                exit={{ x: -SIDEBAR_W }}
+                transition={{ type: "spring", stiffness: 520, damping: 46 }}
+              >
+                <Sidebar onNavigate={toggleSidebar} />
+              </motion.aside>
+            </>
+          )}
+        </AnimatePresence>
         <main className="min-w-0 flex-1 overflow-hidden bg-background">
           {route.name === "setup" ? <Wizard /> : route.name === "prefs" ? <Settings /> : <TasksView />}
         </main>

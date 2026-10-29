@@ -1,5 +1,6 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { Dialog, DialogBackdrop, DialogPanel } from "@headlessui/react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { Command as Cmdk } from "cmdk";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/primitives/dialog";
 import { cn } from "@/lib/utils";
 import { ArrowRight, Bug, Command as CommandIcon, CornerDownLeft, GitBranch, GitPullRequest, Inbox, Keyboard, ListFilter, Monitor, Moon, PanelLeft, Pause, Play, RefreshCw, RotateCcw, Rocket, Search, Settings, Sun, Eye, Code, Lightbulb, User, Sparkles, Loader } from "@/lib/icons";
 import { useApp, store } from "@/store/state";
@@ -52,14 +53,10 @@ export function CommandPalette() {
   const tasks = useApp((s) => s.tasks);
   const route = useRoute();
   const [q, setQ] = useState("");
-  const [active, setActive] = useState(0);
-  const listRef = useRef<HTMLDivElement>(null);
-  const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
       setQ("");
-      setActive(0);
     }
   }, [open]);
 
@@ -142,107 +139,73 @@ export function CommandPalette() {
     return out.slice(0, 40);
   }, [q, cmds]);
 
-  useEffect(() => setActive(0), [q]);
-  useEffect(() => {
-    listRef.current?.querySelector(`[data-idx="${active}"]`)?.scrollIntoView({ block: "nearest" });
-  }, [active, results]);
-
-  // 分组渲染（保持结果顺序，相邻同组合并标题）
-  const rows: any[] = [];
-  let lastGroup = "";
-  results.forEach((r, i) => {
-    if (r.c.group !== lastGroup) {
-      rows.push({ type: "h", label: q.trim() ? r.c.group : r.c.group === "任务" ? "最近任务" : r.c.group });
-      lastGroup = r.c.group;
-    }
-    rows.push({ type: "i", r, i });
-  });
-
-  const onKey = (e: import("react").KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setActive((a) => Math.min(results.length - 1, a + 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setActive((a) => Math.max(0, a - 1));
-    } else if (e.key === "Home") {
-      setActive(0);
-    } else if (e.key === "End") {
-      setActive(results.length - 1);
-    } else if (e.key === "Enter" && !e.nativeEvent?.isComposing) {
-      e.preventDefault();
-      results[active]?.c.run();
-    }
-  };
+  // 按相邻同组合并成分组，保持搜索结果的排序
+  const groups: { label: string; items: typeof results }[] = [];
+  for (const r of results) {
+    const label = q.trim() ? r.c.group : r.c.group === "任务" ? "最近任务" : r.c.group;
+    const last = groups[groups.length - 1];
+    if (last && last.label === label) last.items.push(r);
+    else groups.push({ label, items: [r] });
+  }
 
   return (
-    <Dialog open={open} onClose={close} className="relative z-[80]">
-      <DialogBackdrop transition className="fixed inset-0 bg-scrim transition duration-150 ease-out data-[closed]:opacity-0" />
-      <div className="fixed inset-0 flex items-start justify-center p-3 pt-[10vh] sm:p-4 sm:pt-[12vh]">
-        <DialogPanel
-          transition
-          className="flex max-h-[min(30rem,76vh)] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-border bg-popover shadow-pop outline-none transition duration-150 ease-out data-[closed]:scale-[0.97] data-[closed]:opacity-0"
-        >
+    <Dialog open={open} onOpenChange={(o) => !o && close()}>
+      <DialogContent
+        showCloseButton={false}
+        className="top-[10vh] max-w-xl translate-y-0 gap-0 overflow-hidden rounded-xl border-border bg-popover p-0 shadow-pop sm:top-[12vh] sm:max-w-xl"
+      >
+        <DialogTitle className="sr-only">命令面板</DialogTitle>
+        <DialogDescription className="sr-only">搜索任务，或输入命令</DialogDescription>
+        <Cmdk shouldFilter={false} loop label="命令面板" className="flex max-h-[min(30rem,76vh)] flex-col">
           <div className="flex items-center gap-2.5 border-b border-border px-3.5">
             <Search className="size-4 shrink-0 text-muted-foreground" />
-            <input
-              ref={input}
+            <Cmdk.Input
               autoFocus
-              role="combobox"
-              aria-expanded
-              aria-controls="palette-list"
-              aria-activedescendant={results[active] ? `palette-opt-${active}` : undefined}
-              aria-label="搜索任务或命令"
               value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onKeyDown={onKey}
+              onValueChange={setQ}
+              aria-label="搜索任务或命令"
               placeholder="搜索任务、输入命令…"
               className="h-12 min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-subtle-foreground"
             />
             <Kbd keys={["esc"]} />
           </div>
-          <div ref={listRef} id="palette-list" role="listbox" className="min-h-0 flex-1 overflow-y-auto p-1.5">
-            {results.length === 0 && (
-              <div className="px-3 py-10 text-center text-sm text-muted-foreground">
-                没有找到「{q}」。试试任务编号、标题关键词，或「设置」「同步」。
-              </div>
-            )}
-            {rows.map((row, k) =>
-              row.type === "h" ? (
-                <div key={`h${k}`} className="px-2.5 pb-1 pt-2.5 text-xs font-medium text-subtle-foreground" role="presentation">
-                  {row.label}
-                </div>
-              ) : (
-                <button
-                  key={row.r.c.id}
-                  id={`palette-opt-${row.i}`}
-                  role="option"
-                  aria-selected={row.i === active}
-                  data-idx={row.i}
-                  onMouseMove={() => active !== row.i && setActive(row.i)}
-                  onClick={row.r.c.run}
-                  className={cn("flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left outline-none", row.i === active ? "bg-active" : "")}
-                >
-                  <span className="grid size-5 shrink-0 place-items-center text-muted-foreground">
-                    {row.r.c.node ?? (row.r.c.icon ? <row.r.c.icon className="size-4" /> : <CommandIcon className="size-4" />)}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                    <Highlight text={row.r.c.title} idx={row.r.idx} />
-                  </span>
-                  {row.r.c.hint && <span className="hidden max-w-[40%] shrink-0 truncate text-xs text-muted-foreground sm:block">{row.r.c.hint}</span>}
-                  {row.r.c.keys && <Kbd keys={row.r.c.keys} />}
-                  {row.i === active && !row.r.c.keys && <CornerDownLeft className="size-3.5 shrink-0 text-subtle-foreground" />}
-                </button>
-              ),
-            )}
-          </div>
+          <Cmdk.List className="min-h-0 flex-1 overflow-y-auto p-1.5">
+            <Cmdk.Empty className="px-3 py-10 text-center text-sm text-muted-foreground">
+              没有找到「{q}」。试试任务编号、标题关键词，或「设置」「同步」。
+            </Cmdk.Empty>
+            {groups.map((g) => (
+              <Cmdk.Group
+                key={g.label}
+                heading={g.label}
+                className="[&_[cmdk-group-heading]]:px-2.5 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-2.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-subtle-foreground"
+              >
+                {g.items.map(({ c, idx }) => (
+                  <Cmdk.Item
+                    key={c.id}
+                    value={c.id}
+                    onSelect={c.run}
+                    className="group flex w-full cursor-default items-center gap-2.5 rounded-lg px-2.5 py-2 text-left outline-none data-[selected=true]:bg-active"
+                  >
+                    <span className="grid size-5 shrink-0 place-items-center text-muted-foreground">
+                      {c.node ?? (c.icon ? <c.icon className="size-4" /> : <CommandIcon className="size-4" />)}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                      <Highlight text={c.title} idx={idx} />
+                    </span>
+                    {c.hint && <span className="hidden max-w-[40%] shrink-0 truncate text-xs text-muted-foreground sm:block">{c.hint}</span>}
+                    {c.keys ? <Kbd keys={c.keys} /> : <CornerDownLeft className="hidden size-3.5 shrink-0 text-subtle-foreground group-data-[selected=true]:block" />}
+                  </Cmdk.Item>
+                ))}
+              </Cmdk.Group>
+            ))}
+          </Cmdk.List>
           <div className="flex items-center gap-4 border-t border-border bg-surface px-3.5 py-2 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1.5"><Kbd keys={["up"]} /><Kbd keys={["down"]} />选择</span>
             <span className="inline-flex items-center gap-1.5"><Kbd keys={["enter"]} />执行</span>
             <span className="ml-auto hidden sm:inline">{results.length} 项</span>
           </div>
-        </DialogPanel>
-      </div>
+        </Cmdk>
+      </DialogContent>
     </Dialog>
   );
 }

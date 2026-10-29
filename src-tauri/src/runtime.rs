@@ -795,40 +795,12 @@ impl Runtime {
             })
             .await?;
         }
-        if let Err(error) = self.writeback_mr(id, config).await {
-            self.update(id, |t| t["run"]["writebackError"] = json!(error)).await?;
-            return Err(format!("MR 已创建，禅道回写未完成：{error}。可打开现有 MR；重试不会重复创建 MR。"));
-        }
-        Ok(())
-    }
-    async fn writeback_mr(&self, id: &str, config: &Value) -> Result<()> {
-        let t = self.task(id).await?;
-        let zt = services::zentao(&config["zentao"]).await?;
-        let route = format!(
-            "/{}/{}",
-            if text(&t, "kind") == "bug" {
-                "bugs"
-            } else {
-                "stories"
-            },
-            t["no"]
-        );
-        let link = text(&t["run"]["mr"], "url");
-        let before = zt.request(&route, "GET", None).await?;
-        if !before["actions"].to_string().contains(link) {
-            let comment_result = zt.comment(
-                text(&t, "kind"),
-                t["no"].as_u64().ok_or("缺少禅道编号")?,
-                link,
-            )
-            .await;
-            let verified = zt.request(&route, "GET", None).await?;
-            if !verified["actions"].to_string().contains(link) {
-                if let Err(error) = comment_result { return Err(error); }
-                return Err("MR 已创建，但未能在禅道历史中验证回写链接。请核对此版本 comments API，任务仍保留待审核。".into());
-            }
-        }
-        self.update(id,|t|{t["run"]["state"]=json!("done");t["run"].as_object_mut().unwrap().remove("writebackError");push_event(t,json!({"kind":"system","tone":"success","text":"已创建 MR 并回写链接。禅道状态未自动变更，请按团队工作流审核。"}));}).await
+        self.update(id, |t| {
+            t["run"]["state"] = json!("done");
+            t["run"]["finishedAt"] = json!(now());
+            t["run"].as_object_mut().unwrap().remove("writebackError");
+            push_event(t, json!({"kind":"system","tone":"success","text":"已提交 MR"}));
+        }).await
     }
     pub async fn shutdown(&self) {
         for job in self.jobs.lock().await.values() {

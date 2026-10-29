@@ -1,4 +1,5 @@
 import { openExternal } from "@/store/actions";
+import { motion } from "motion/react";
 import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, Calendar, Copy, Ellipsis, ExternalLink, GitBranch, GitMerge, GitPullRequest, Link, Pause, Play, RotateCcw, Square, TriangleAlert, Check, SearchX } from "@/lib/icons";
@@ -39,7 +40,7 @@ function TabButton({ id, on, children, onClick }: { id: string; on: boolean; chi
       )}
     >
       {children}
-      <span className={cn("absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-accent transition-opacity", on ? "opacity-100" : "opacity-0")} />
+      {on && <motion.span layoutId="detail-tab-underline" className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-accent" transition={{ type: "spring", stiffness: 600, damping: 44 }} />}
     </button>
   );
 }
@@ -86,13 +87,12 @@ function Actions({ task }: { task: ZTask }) {
       {s === "review" && (
         <>
           <Button variant="primary" loading={run.mrBusy} onClick={() => createMr(task.id)}>
-            <GitPullRequest />{run.mr ? (run.mrBusy ? "正在回写禅道…" : "重试禅道回写") : (run.mrBusy ? "正在创建 MR…" : "创建 Merge Request")}
+            <GitPullRequest />{run.mr ? (run.mrBusy ? "正在确认 MR…" : "完成提交") : (run.mrBusy ? "正在创建 MR…" : "创建 Merge Request")}
           </Button>
           {run.mr && <>
             <Button variant="secondary" onClick={() => openExternal(run.mr!.url)}><ExternalLink />打开 MR !{run.mr.iid}</Button>
             <Button variant="ghost" onClick={() => copyText(run.mr!.url, "已复制 MR 链接")}><Copy />复制 MR 链接</Button>
-            <span className="text-sm text-warning" role="status">MR 已创建，待回写禅道</span>
-            {run.writebackError && <p className="w-full rounded-md bg-warning/10 px-3 py-2 text-sm text-warning" role="alert">{run.writebackError}。可在禅道备注中手动粘贴 MR 链接，再点击“重试禅道回写”核验。</p>}
+            <span className="text-sm text-success" role="status">MR 已创建</span>
           </>}
           <Button variant="secondary" onClick={() => document.getElementById("composer")?.focus()}>要求修改</Button>
           <Button variant="ghost" onClick={() => stopRun(task.id)}>丢弃</Button>
@@ -105,7 +105,7 @@ function Actions({ task }: { task: ZTask }) {
               <GitMerge />MR !{run.mr.iid}<ExternalLink className="opacity-60" />
             </Button>
           )}
-          <span className="inline-flex items-center gap-1.5 text-sm text-success"><Check className="size-4" />已回写禅道：{task.ztStatus}</span>
+          <span className="inline-flex items-center gap-1.5 text-sm text-success"><Check className="size-4" />已提交 MR</span>
         </>
       )}
       {s === "failed" && (

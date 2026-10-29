@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { AppShell } from "@/components/shell/app-shell";
+import { MotionConfig } from "motion/react";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { store, hydrate } from "@/store/state";
 import { cycleTheme, setPalette, setShortcuts, toggleSidebar } from "@/store/actions";
 import { navigate } from "@/lib/route";
@@ -36,5 +38,11 @@ export function App() {
       window.removeEventListener("keydown", onKey);
     };
   }, []);
-  return <AppShell />;
+  return (
+    <MotionConfig reducedMotion="user">
+      <TooltipProvider delayDuration={420} skipDelayDuration={200}>
+        <AppShell />
+      </TooltipProvider>
+    </MotionConfig>
+  );
 }

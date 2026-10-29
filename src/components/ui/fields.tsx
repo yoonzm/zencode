@@ -1,26 +1,31 @@
-import { forwardRef, useId } from "react";
-import { Listbox, ListboxButton, ListboxOption, ListboxOptions, Switch as HSwitch } from "@headlessui/react";
+import * as React from "react";
+import { useId } from "react";
 import { cn } from "@/lib/utils";
-import { Check, ChevronsUpDown } from "@/lib/icons";
+import { Input as ShadInput } from "./primitives/input";
+import { Textarea as ShadTextarea } from "./primitives/textarea";
+import { Switch } from "./primitives/switch";
+import { Checkbox as ShadCheckbox } from "./primitives/checkbox";
+import { Select as ShadSelect, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./primitives/select";
+import { ToggleGroup, ToggleGroupItem } from "./primitives/toggle-group";
 
-const inputBase =
-  "w-full rounded-md border border-border-strong bg-card text-sm text-foreground placeholder:text-subtle-foreground outline-none transition-[border-color,box-shadow] duration-100 hover:border-subtle-foreground focus:border-accent focus:ring-[3px] focus:ring-accent/18 disabled:opacity-55 aria-[invalid=true]:border-danger aria-[invalid=true]:focus:ring-danger/20";
+type InputProps = Omit<React.ComponentProps<"input">, "ref"> & { invalid?: boolean };
 
-export const Input = forwardRef<HTMLInputElement, any>(function Input({ className, invalid, ...p }, ref) {
-  return <input ref={ref} aria-invalid={invalid || undefined} className={cn(inputBase, "h-8 px-2.5", className)} {...p} />;
+/** 输入框：shadcn Input，加 invalid 便捷属性与紧凑尺寸。 */
+export const Input = React.forwardRef<HTMLInputElement, InputProps>(function Input({ className, invalid, ...p }, ref) {
+  return <ShadInput ref={ref as never} aria-invalid={invalid || undefined} className={cn("h-8 px-2.5 text-sm md:text-sm", className)} {...p} />;
 });
 
-export const Textarea = forwardRef<HTMLTextAreaElement, any>(function Textarea({ className, invalid, ...p }, ref) {
-  return <textarea ref={ref} aria-invalid={invalid || undefined} className={cn(inputBase, "min-h-16 resize-none px-2.5 py-1.5 leading-5", className)} {...p} />;
+export const Textarea = React.forwardRef<HTMLTextAreaElement, Omit<React.ComponentProps<"textarea">, "ref"> & { invalid?: boolean }>(function Textarea({ className, invalid, ...p }, ref) {
+  return <ShadTextarea ref={ref as never} aria-invalid={invalid || undefined} className={cn("min-h-16 resize-none px-2.5 py-1.5 leading-5", className)} {...p} />;
 });
 
 interface FieldProps {
   label: string;
   hint?: string;
   error?: string | null;
-  children: (p: { id: string; describedBy?: string; invalid: boolean }) => any;
+  children: (p: { id: string; describedBy?: string; invalid: boolean }) => React.ReactNode;
   className?: string;
-  right?: any;
+  right?: React.ReactNode;
 }
 
 export function Field({ label, hint, error, children, className, right }: FieldProps) {
@@ -43,17 +48,17 @@ export function Field({ label, hint, error, children, className, right }: FieldP
   );
 }
 
+/** 开关：shadcn Switch（Radix）。 */
 export function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
-    <HSwitch
+    <Switch
       checked={checked}
-      onChange={onChange}
+      onCheckedChange={onChange}
       disabled={disabled}
       aria-label={label}
-      className="group relative inline-flex h-5 w-9 shrink-0 items-center rounded-full bg-border-strong outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-1 focus-visible:ring-offset-background data-[checked]:bg-accent data-[disabled]:opacity-50"
-    >
-      <span className="size-4 translate-x-0.5 rounded-full bg-subtle-foreground shadow-sm transition duration-150 group-data-[checked]:translate-x-[18px] group-data-[checked]:bg-accent-foreground" />
-    </HSwitch>
+      className="h-5 w-9 data-[state=checked]:bg-accent data-[state=unchecked]:bg-border-strong"
+      thumbClassName="size-4 data-[state=checked]:translate-x-[18px] data-[state=unchecked]:translate-x-0.5 data-[state=checked]:bg-accent-foreground data-[state=unchecked]:bg-subtle-foreground"
+    />
   );
 }
 
@@ -63,71 +68,63 @@ export interface Opt<T extends string> {
   hint?: string;
 }
 
+/** 下拉选择：shadcn Select（Radix）。 */
 export function Select<T extends string>({ value, onChange, options, id, className, placeholder = "请选择", invalid }: { value: T | ""; onChange: (v: T) => void; options: Opt<T>[]; id?: string; className?: string; placeholder?: string; invalid?: boolean }) {
-  const cur = options.find((o) => o.value === value);
   return (
-    <Listbox value={value as T} onChange={onChange}>
-      <ListboxButton
-        id={id}
-        aria-invalid={invalid || undefined}
-        className={cn(inputBase, "flex h-8 items-center gap-2 px-2.5 text-left data-[open]:border-accent", className)}
-      >
-        <span className={cn("min-w-0 flex-1 truncate", !cur && "text-subtle-foreground")}>{cur?.label ?? placeholder}</span>
-        <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
-      </ListboxButton>
-      <ListboxOptions
-        anchor={{ to: "bottom start", gap: 4, padding: 8 }}
-        transition
-        className="z-[75] max-h-72 min-w-[var(--button-width)] rounded-lg border border-border bg-popover p-1 shadow-pop outline-none transition duration-100 ease-out data-[closed]:opacity-0 [--anchor-gap:4px]"
-      >
+    <ShadSelect value={value || undefined} onValueChange={(v) => onChange(v as T)}>
+      <SelectTrigger id={id} aria-invalid={invalid || undefined} className={cn("h-8 w-full px-2.5 text-sm data-[size=default]:h-8", className)}>
+        <SelectValue placeholder={placeholder}>{options.find((o) => o.value === value)?.label}</SelectValue>
+      </SelectTrigger>
+      <SelectContent position="popper" sideOffset={4} className="rounded-lg border-border bg-popover shadow-pop">
         {options.map((o) => (
-          <ListboxOption key={o.value} value={o.value} className="flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground data-[focus]:bg-active">
-            <span className="min-w-0 flex-1">
+          <SelectItem key={o.value} value={o.value} className="py-1.5">
+            <span className="min-w-0">
               <span className="block truncate">{o.label}</span>
               {o.hint && <span className="block truncate text-xs text-muted-foreground">{o.hint}</span>}
             </span>
-            {o.value === value && <Check className="size-3.5 shrink-0 text-accent" />}
-          </ListboxOption>
+          </SelectItem>
         ))}
-      </ListboxOptions>
-    </Listbox>
+      </SelectContent>
+    </ShadSelect>
   );
 }
 
-export function Segmented<T extends string>({ value, onChange, options, size = "md", label, className }: { value: T; onChange: (v: T) => void; options: { value: T; label: any; count?: number }[]; size?: "sm" | "md"; label: string; className?: string }) {
+/** 分段控件：shadcn ToggleGroup（单选）。 */
+export function Segmented<T extends string>({ value, onChange, options, size = "md", label, className }: { value: T; onChange: (v: T) => void; options: { value: T; label: React.ReactNode; count?: number }[]; size?: "sm" | "md"; label: string; className?: string }) {
   return (
-    <div role="radiogroup" aria-label={label} className={cn("inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5", className)}>
+    <ToggleGroup
+      type="single"
+      value={value}
+      onValueChange={(v) => v && onChange(v as T)}
+      aria-label={label}
+      className={cn("inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5", className)}
+    >
       {options.map((o) => {
         const on = o.value === value;
         return (
-          <button
+          <ToggleGroupItem
             key={o.value}
-            role="radio"
-            aria-checked={on}
-            type="button"
-            onClick={() => onChange(o.value)}
+            value={o.value}
             className={cn(
-              "inline-flex items-center justify-center gap-1.5 rounded-md font-medium outline-none transition-[background-color,color,box-shadow] duration-100 focus-visible:ring-2 focus-visible:ring-ring/60",
+              "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-md font-medium shadow-none first:rounded-md last:rounded-md focus-visible:z-10",
               size === "sm" ? "h-6 px-2 text-xs" : "h-7 px-2.5 text-sm",
-              on ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+              on ? "bg-card text-foreground shadow-sm hover:bg-card" : "bg-transparent text-muted-foreground hover:bg-transparent hover:text-foreground",
             )}
           >
             {o.label}
             {o.count != null && <span className={cn("tabular-nums text-xs", on ? "text-muted-foreground" : "text-subtle-foreground")}>{o.count}</span>}
-          </button>
+          </ToggleGroupItem>
         );
       })}
-    </div>
+    </ToggleGroup>
   );
 }
 
-export function Checkbox({ checked, onChange, label, className }: { checked: boolean; onChange: (v: boolean) => void; label?: any; className?: string }) {
+/** 复选框：shadcn Checkbox（Radix）。 */
+export function Checkbox({ checked, onChange, label, className }: { checked: boolean; onChange: (v: boolean) => void; label?: React.ReactNode; className?: string }) {
   return (
     <label className={cn("flex items-center gap-2 text-sm", className)}>
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="peer sr-only" />
-      <span className="grid size-4 shrink-0 place-items-center rounded-[4px] border border-border-strong bg-card text-accent-foreground transition-colors peer-checked:border-accent peer-checked:bg-accent peer-focus-visible:ring-2 peer-focus-visible:ring-ring/60 [&>svg]:opacity-0 peer-checked:[&>svg]:opacity-100">
-        <Check className="size-3" strokeWidth={3} />
-      </span>
+      <ShadCheckbox checked={checked} onCheckedChange={(v) => onChange(v === true)} className="data-[state=checked]:border-accent data-[state=checked]:bg-accent data-[state=checked]:text-accent-foreground" />
       {label}
     </label>
   );

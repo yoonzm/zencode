@@ -1,6 +1,6 @@
 # ZenCode
 
-Tauri 2 + Rust desktop application, retaining the React / TypeScript / Tailwind 4 interface from [yoonzm/zencode-ui](https://github.com/yoonzm/zencode-ui), initial baseline `33c33acb1e557d00d4016fcb9d677cd44ff0ed88`, with shell/settings and per-connection TLS controls selectively synchronized through `7c9b4eb`. Desktop service wiring and fixes are retained; prototype simulation controls are excluded.
+Tauri 2 + Rust desktop application, retaining the React / TypeScript / Tailwind 4 interface from [yoonzm/zencode-ui](https://github.com/yoonzm/zencode-ui), initial baseline `33c33acb1e557d00d4016fcb9d677cd44ff0ed88`, with UI components and MR completion behavior synchronized through `2dacbcc`. Desktop service wiring and fixes are retained; prototype simulation controls are excluded.
 
 ## Development
 
@@ -16,34 +16,34 @@ npm start
 npm run package
 ```
 
-`npm test` builds/tests the Rust core without native WebView dependencies. Full desktop builds require platform libraries. `npm run build` produces the original interface in `dist` with an external script for Tauri CSP.
+`npm test` builds/tests the Rust core without native WebView dependencies. Full desktop builds require platform libraries. `npm run build` uses Vite and Tailwind CSS to produce `dist` with external scripts and styles for Tauri CSP. UI primitives use Radix/shadcn, HeroUI, Magic UI, Motion, lucide-react, Zustand and cmdk. `npm run dev` starts the browser preview; desktop service calls require Tauri.
 
 ## Runtime
 
 - Native OS window decorations provide the window controls. Platform appearance and shortcut labels follow the actual runtime platform; prototype platform overrides are no longer restored.
-- ZenTao and GitLab each offer an opt-in **Advanced > Skip certificate verification** setting (off by default). It applies only to that service's API client, including authentication, synchronization, attachments and MR API/writeback requests. Certificate failures reveal the setting; successful tests identify when verification was skipped. Git push retains the local Git TLS configuration. No global TLS or Git settings are changed.
+- ZenTao and GitLab each offer an opt-in **Advanced > Skip certificate verification** setting (off by default). It applies only to that service's API client, including authentication, synchronization, attachments and MR API requests. Certificate failures reveal the setting; successful tests identify when verification was skipped. Git push retains the local Git TLS configuration. No global TLS or Git settings are changed.
 - Rust performs HTTP requests, Git operations and the Codex app-server JSON-RPC protocol. There is no bundled Node/Electron server.
 - Windows credentials use Credential Manager; macOS uses Keychain through keyring. Credentials are never saved in renderer localStorage. Linux credential persistence is explicitly unsupported in this release.
 - Task state is saved in the OS application data directory, with a backup on replacement. A damaged state file is reported, not silently reset.
 - ZenTao REST v1 (`/api.php/v1`) uses token or password authentication. Synchronization only reads bugs, stories and task details for products with a configured repository mapping. Within those products, the synchronization scope selects either tasks assigned to the configured account or all assignees. The full product catalog remains available for configuring mappings.
 - Each task gets an isolated Git worktree and branch under application data. Existing user checkout changes are not discarded. Execution failures and app interruption retain the worktree and history.
 - Codex uses `app-server --listen stdio://`, thread start/resume, turn start/steer/interrupt, message streaming and command/file approval responses. “Always” currently means the current Codex session. Pause interrupts the current turn; resume creates a new turn in the same thread, not an OS process freeze.
-- Review shows a real Git diff, including new files. Clicking MR stages, commits and pushes that isolated branch, then creates/reuses the MR and writes its link to ZenTao. Git push uses the user's configured Git credential helper/SSH, independently of the API PAT. Origin is verified against the configured GitLab project before push.
+- Review shows a real Git diff, including new files. Clicking MR stages, commits and pushes that isolated branch, then creates/reuses the MR and marks the local run complete. Git push uses the user's configured Git credential helper/SSH, independently of the API PAT. Origin is verified against the configured GitLab project before push.
 - Before MR submission, all effective `origin` push URLs are checked against the project's GitLab-provided SSH or HTTP clone URL. SSH and HTTP API ports are independent; a separate or additional `pushurl` must still match the project.
-- MR failure remains reviewable. If MR creation succeeds but ZenTao writeback fails, the review view keeps the MR open/copy actions and offers a writeback retry instead of another create action. Empty or invalid JSON responses identify the failing endpoint without exposing response bodies. A history readback is attempted even when the comment response fails; only a verified link completes the task. Manual insertion of the MR link in ZenTao followed by retry is also verified without posting another comment. ZenTao status and fix version are preserved; only the MR link is added.
+- MR failure remains reviewable. Successful MR submission completes the local run without writing comments, links, status or fix versions to ZenTao. ZenTao status remains read-only and comes from synchronization. Legacy pending runs retain their MR open/copy actions and can finish submission without creating another MR.
 
 ## Installers and validation limits
 
 The `Desktop installers` GitHub Actions workflow builds Windows x64 NSIS `.exe`, macOS Apple Silicon `.dmg`, and macOS Intel `.dmg`. Artifacts are private workflow downloads, not public releases. Signing/notarization credentials are not configured.
 
-This is an implementation in validation, not a claim of complete production readiness. Live ZenTao/GitLab integration, interactive Windows/macOS flows, and credential-vault roundtrips still require those systems/accounts. Attachment downloads require a binary REST v1 file response (up to 50 MB); incompatible preview/JSON responses report an error. Legacy ZenTao APIs are not supported. MR writeback only adds a link and never changes task status or fix version. It uses the v2 action comment endpoint, with a v1 comments fallback only on HTTP 404/405, followed by a readback check; servers without a working comments endpoint keep the task in review with its MR link. Unsupported Codex interaction requests fail explicitly. No external test tenant is included, and no successful remote mutation is fabricated. See test output and workflow artifacts for verified results.
+This is an implementation in validation, not a claim of complete production readiness. Live ZenTao/GitLab integration, interactive Windows/macOS flows, and credential-vault roundtrips still require those systems/accounts. Attachment downloads require a binary REST v1 file response (up to 50 MB); incompatible preview/JSON responses report an error. Legacy ZenTao APIs are not supported. MR submission does not write to ZenTao. Unsupported Codex interaction requests fail explicitly. No external test tenant is included, and no successful remote mutation is fabricated. See test output and workflow artifacts for verified results.
 
 ## Verified locally
 
 - TypeScript typecheck and production UI build pass.
-- Ten Rust tests pass: URL validation, task identity normalization, GitLab remote validation, state persistence, HTTP pagination/authentication, task synchronization/attachments, crash recovery, a Git-backed app-server fixture covering approval/pause/resume/diff, MR writeback retry without duplicate MR creation, and link-only modern ZenTao comments.
+- Rust regression coverage includes: URL validation, task identity normalization, GitLab remote validation, state persistence, HTTP pagination/authentication, task synchronization/attachments, crash recovery, a Git-backed app-server fixture covering approval/pause/resume/diff, MR completion without ZenTao writes or duplicate MR creation, and link-only modern ZenTao comments.
 - `cargo run --no-default-features --example check_codex` is a read-only protocol/account smoke check. In the selected cloud environment the installed CLI exits before initialization because `/home/agent/.codex` is read-only; no real model execution has been asserted. A second check using an empty, isolated writable CLI configuration succeeded in initializing the actual app-server and correctly reported no configured account.
-- All original `src/styles` files remain byte-for-byte unchanged. Visual pixel parity remains unverified: both baseline and current pages were blocked by the environment browser policy. Windows installer launch smoke testing passes in CI; macOS disk images are mounted and verified, but interactive native flows still require a real desktop.
+- Styles and components are synchronized with the upstream UI stack. Interactive native Windows/macOS visual flows still require desktop validation.
 
 A frontend persistence regression test also verifies that vault failures do not create a toast/save retry loop, explicit retries work, and obsolete prototype platform/window-control preferences are ignored.
 

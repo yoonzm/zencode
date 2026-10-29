@@ -104,7 +104,7 @@ async fn paginate_and_reject_http_auth_failure() {
 }
 
 #[tokio::test]
-async fn writeback_retry_preserves_existing_mr_and_verifies_history() {
+async fn submission_preserves_existing_mr_without_zentao_requests() {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use zencode_core::{
         runtime::Runtime,
@@ -156,22 +156,12 @@ async fn writeback_retry_preserves_existing_mr_and_verifies_history() {
         assert_eq!(comments.load(Ordering::SeqCst), 0);
         command("git", &["config", "--unset-all", "remote.origin.pushurl"], Some(&repo)).await.unwrap();
     }
-    assert!(runtime
-        .call("mr", args.clone())
-        .await
-        .unwrap_err()
-        .contains("500"));
-    assert_eq!(
-        runtime.data.lock().await["tasks"][0]["run"]["state"],
-        "review"
-    );
-    assert_eq!(runtime.data.lock().await["tasks"][0]["run"]["mr"]["iid"], 4);
     runtime.call("mr", args).await.unwrap();
-    assert_eq!(
-        runtime.data.lock().await["tasks"][0]["run"]["state"],
-        "done"
-    );
-    assert_eq!(comments.load(Ordering::SeqCst), 2);
+    let data = runtime.data.lock().await;
+    assert_eq!(data["tasks"][0]["run"]["state"], "done");
+    assert_eq!(data["tasks"][0]["run"]["mr"]["iid"], 4);
+    assert_eq!(comments.load(Ordering::SeqCst), 0);
+
 }
 
 #[tokio::test]
@@ -207,12 +197,10 @@ async fn invalid_response_identifies_endpoint_without_leaking_body() {
 }
 
 #[tokio::test]
-async fn empty_comment_response_requires_readback_and_preserves_mr_for_retry() {
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+async fn legacy_pending_mr_finishes_without_zentao_access() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use zencode_core::{runtime::Runtime, services::{command, empty_run}, storage::Storage};
-    for saved in [false, true] {
-        let stored = Arc::new(AtomicBool::new(false));
-        let readback = stored.clone();
+    for status in ["active", "resolved"] {
         let writes = Arc::new(AtomicUsize::new(0));
         let count = writes.clone();
         let base_value = Arc::new(Mutex::new(String::new()));
@@ -223,15 +211,9 @@ async fn empty_comment_response_requires_readback_and_preserves_mr_for_retry() {
                 assert!(request.starts_with("GET "), "Must not create another MR");
                 return (200, json!({"id":9,"http_url_to_repo":format!("{}/team/app.git",response_base.lock().unwrap())}).to_string());
             }
-            if route.starts_with("/api.php/v2/actions/comment?") {
-                count.fetch_add(1, Ordering::SeqCst);
-                readback.store(saved, Ordering::SeqCst);
-                return (200, String::new());
-            }
-            if route == "/api.php/v1/bugs/1" {
-                return (200, json!({"actions":if readback.load(Ordering::SeqCst) {json!([{"comment":link}])} else {json!([])}}).to_string());
-            }
-            panic!("Unexpected route {route}; ambiguous writes must not fall back to another POST");
+            count.fetch_add(1, Ordering::SeqCst);
+            (503, String::new())
+
         })).await;
         *base_value.lock().unwrap() = base.clone();
         let dir = tempfile::tempdir().unwrap();
@@ -244,28 +226,16 @@ async fn empty_comment_response_requires_readback_and_preserves_mr_for_retry() {
         run["worktree"] = json!(repo);
         run["mr"] = json!({"iid":4,"url":link});
         run["mapping"] = json!({"repo":"team/app","branch":"main"});
+        run["writebackError"] = json!("legacy error");
         let root = dir.path().join("data");
-        Storage::new(&root).save(&json!({"prefs":{},"tasks":[{"id":"bug-1","no":1,"kind":"bug","run":run}]})).unwrap();
+        Storage::new(&root).save(&json!({"prefs":{},"tasks":[{"id":"bug-1","no":1,"kind":"bug","ztStatus":status,"run":run}]})).unwrap();
         let runtime = Runtime::new(root, Arc::new(|_, _| {})).unwrap();
         let args = json!({"id":"bug-1","config":{"gitlab":{"baseUrl":base,"token":"fixture"},"zentao":{"baseUrl":base,"auth":"token","secret":"fixture"}}});
-        let result = runtime.call("mr", args.clone()).await;
-        if saved {
-            result.unwrap();
-        } else {
-            let error = result.unwrap_err();
-            assert!(error.contains("MR 已创建") && error.contains("空响应"));
-            let data = runtime.data.lock().await;
-            assert_eq!(data["tasks"][0]["run"]["state"], "review");
-            assert_eq!(data["tasks"][0]["run"]["mr"]["iid"], 4);
-            assert!(data["tasks"][0]["run"]["writebackError"].as_str().unwrap().contains("空响应"));
-            drop(data);
-            // A manual comment or delayed server write must be detected without another POST.
-            stored.store(true, Ordering::SeqCst);
-            runtime.call("mr", args).await.unwrap();
-        }
+        runtime.call("mr", args).await.unwrap();
         let data = runtime.data.lock().await;
         assert_eq!(data["tasks"][0]["run"]["state"], "done");
         assert!(data["tasks"][0]["run"].get("writebackError").is_none());
-        assert_eq!(writes.load(Ordering::SeqCst), 1);
+        assert_eq!(data["tasks"][0]["ztStatus"], status);
+        assert_eq!(writes.load(Ordering::SeqCst), 0);
     }
 }

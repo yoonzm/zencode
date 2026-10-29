@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync, readdirSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 
 test('theme previews retain full-width geometry and generated flex rules across WebView button defaults',()=>{
@@ -19,8 +19,8 @@ test('theme previews retain full-width geometry and generated flex rules across 
  assert.ok(classes.some(c=>c.includes('theme-light')&&c.includes('w-1/2')));
  assert.ok(classes.some(c=>c.includes('theme-dark')&&c.includes('w-1/2')));
  // Check the actual shipped CSS, not just class names in JSX. No browser-policy bypass.
- execFileSync(process.execPath,['build.mjs']);
- const html=readFileSync('dist/index.html','utf8');
- for(const rule of ['.items-stretch{align-items:stretch}', '.w-full{width:100%}', '.flex{display:flex}', '.flex-col{flex-direction:column}', '.ml-auto{margin-left:auto}']) assert.ok(html.includes(rule),rule);
- assert.ok(html.includes('.h-16{height:calc(var(--spacing) * 16)}'));
+ execFileSync(process.execPath,['node_modules/vite/bin/vite.js','build']);
+ const html=readdirSync('dist/assets').filter(f=>f.endsWith('.css')).map(f=>readFileSync(`dist/assets/${f}`,'utf8')).join('');
+ for(const rule of ['.items-stretch{align-items:stretch}', '.w-full{width:100%}', '.flex{display:flex}', '.flex-col{flex-direction:column}', '.ml-auto{margin-left:auto}']) assert.ok(html.replaceAll(' ','').includes(rule.replaceAll(' ','')),rule);
+ assert.ok(html.replaceAll(' ','').includes('.h-16{height:calc(var(--spacing)*16)}'));
 });

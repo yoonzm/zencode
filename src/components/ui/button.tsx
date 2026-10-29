@@ -1,50 +1,20 @@
-import { forwardRef } from "react";
-import { cva, type VariantProps } from "class-variance-authority";
-import { cn } from "@/lib/utils";
+import * as React from "react";
 import { Loader } from "@/lib/icons";
+import { cn } from "@/lib/utils";
+import { Button as ShadcnButton, buttonVariants } from "./primitives/button";
 
-export const buttonVariants = cva(
-  "inline-flex shrink-0 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-[background-color,border-color,color,box-shadow,transform] duration-100 outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-45 active:translate-y-px [&_svg]:shrink-0",
-  {
-    variants: {
-      variant: {
-        primary: "bg-primary text-primary-foreground hover:bg-primary/88 shadow-sm",
-        accent: "bg-accent text-accent-foreground hover:bg-accent/90 shadow-sm",
-        secondary: "border border-border-strong bg-card text-foreground hover:bg-muted shadow-sm",
-        ghost: "text-muted-foreground hover:bg-hover hover:text-foreground active:bg-active",
-        subtle: "bg-muted text-foreground hover:bg-active",
-        danger: "bg-danger text-white hover:bg-danger/90 shadow-sm",
-        "danger-ghost": "text-danger hover:bg-danger/10",
-      },
-      size: {
-        xs: "h-6 px-2 text-xs [&_svg]:size-3.5",
-        sm: "h-7 px-2.5 text-sm [&_svg]:size-4",
-        md: "h-8 px-3 text-sm [&_svg]:size-4",
-        lg: "h-9 px-4 text-base [&_svg]:size-4",
-        "icon-xs": "size-6 [&_svg]:size-3.5",
-        "icon-sm": "size-7 [&_svg]:size-4",
-        icon: "size-8 [&_svg]:size-4",
-      },
-    },
-    defaultVariants: { variant: "secondary", size: "md" },
-  },
-);
+export { buttonVariants };
 
-export interface ButtonProps extends VariantProps<typeof buttonVariants> {
-  className?: string;
+export interface ButtonProps extends React.ComponentProps<typeof ShadcnButton> {
   loading?: boolean;
-  children?: any;
-  [k: string]: any;
 }
 
-export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { className, variant, size, loading, disabled, children, type = "button", ...rest },
-  ref,
-) {
+/** 项目按钮：shadcn Button 加加载态。 */
+export function Button({ loading, disabled, children, type = "button", className, ...rest }: ButtonProps) {
   return (
-    <button ref={ref} type={type} disabled={disabled || loading} aria-busy={loading || undefined} className={cn(buttonVariants({ variant, size }), className)} {...rest}>
+    <ShadcnButton type={type} disabled={disabled || loading} aria-busy={loading || undefined} className={cn(className)} {...rest}>
       {loading ? <Loader className="animate-spin" aria-hidden /> : null}
       {children}
-    </button>
+    </ShadcnButton>
   );
-});
+}

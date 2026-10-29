@@ -8,7 +8,7 @@ export type RunState =
   | "waiting" // 等待你审批
   | "paused" // 已暂停
   | "review" // Codex 已完成，等待你审核
-  | "done" // 已提交 MR，并回写禅道
+  | "done" // 已提交 MR
   | "failed"; // 失败
 
 export type Priority = 1 | 2 | 3 | 4; // 禅道：1 最高
@@ -84,7 +84,6 @@ export interface Run {
   files: DiffFile[];
   activity?: string;
   mr?: { iid: number; url: string };
-  writebackError?: string;
   mrBusy?: boolean;
   viewed: string[];
   unread?: boolean;
@@ -97,7 +96,7 @@ export interface ZTask {
   title: string;
   priority: Priority;
   severity?: 1 | 2 | 3 | 4;
-  ztStatus: string; // 禅道状态：激活 / 已解决 / 评审中 …
+  ztStatus: string; // 禅道状态（只读，从禅道同步）：激活 / 已解决 / 评审中 …
   product: string;
   module: string;
   moduleKey: string;
