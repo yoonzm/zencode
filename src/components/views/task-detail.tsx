@@ -1,3 +1,4 @@
+import { taskRef } from "@/lib/task";
 import { openExternal } from "@/store/actions";
 import { motion } from "motion/react";
 import { useEffect } from "react";
@@ -181,15 +182,16 @@ export function TaskDetail({ id, onBack }: { id: string; onBack?: () => void }) 
             </Button>
           )}
           <KindIcon kind={task.kind} />
-          <span className="font-medium text-foreground">{task.kind === "bug" ? "Bug" : "需求"} #{task.no}</span>
+          <span className="font-medium text-foreground">{taskRef(task)}</span>
           <span aria-hidden>·</span>
           <span className="min-w-0 truncate">{task.product} / {task.module}</span>
+          {task.manual && <span className="rounded-full bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">手动</span>}
           <div className="ml-auto flex items-center gap-0.5">
-            <Tip label="在禅道中打开">
+            {!task.manual && <Tip label="在禅道中打开">
               <Button variant="ghost" size="icon-sm" aria-label="在禅道中打开" onClick={() => openExternal(`${store.get().config.zentao.baseUrl}/${task.kind}-view-${task.no}.html`)}>
                 <ExternalLink />
               </Button>
-            </Tip>
+            </Tip>}
             <DropMenu
               align="end"
               buttonClassName="grid size-7 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 data-[open]:bg-active"
@@ -197,7 +199,7 @@ export function TaskDetail({ id, onBack }: { id: string; onBack?: () => void }) 
               trigger={<Ellipsis className="size-4" />}
               entries={[
                 { label: "复制分支名", icon: GitBranch, disabled: !run.branch, onClick: () => run.branch && copyText(run.branch, "已复制分支名") },
-                { label: "复制禅道链接", icon: Link, onClick: () => copyText(`${store.get().config.zentao.baseUrl}/${task.kind}-view-${task.no}.html`, "已复制禅道链接") },
+                ...(task.manual ? [] : [{ label: "复制禅道链接", icon: Link, onClick: () => copyText(`${store.get().config.zentao.baseUrl}/${task.kind}-view-${task.no}.html`, "已复制禅道链接") }]),
                 { separator: true },
                 { label: "删除任务…", icon: Trash, danger: true, onClick: () => deleteTask(task.id) },
                 { label: "终止并丢弃本次执行…", icon: Square, danger: true, disabled: run.state === "idle", onClick: () => stopRun(task.id) },
@@ -251,7 +253,7 @@ export function TaskDetail({ id, onBack }: { id: string; onBack?: () => void }) 
               </span>
             )}
           </TabButton>
-          <TabButton id="zentao" on={tab === "zentao"} onClick={() => setTab("zentao")}>禅道原文</TabButton>
+          <TabButton id="zentao" on={tab === "zentao"} onClick={() => setTab("zentao")}>{task.manual ? "原文" : "禅道原文"}</TabButton>
           {tab === "diff" && run.files.length > 0 && (
             <span className="ml-auto hidden font-mono text-xs tabular-nums @md:block"><span className="text-success">+{diffAdd}</span> <span className="text-danger">−{diffDel}</span></span>
           )}

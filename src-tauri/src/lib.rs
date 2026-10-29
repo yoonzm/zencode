@@ -1,3 +1,4 @@
+mod manual;
 pub mod codex;
 mod cleanup;
 mod matching;
@@ -7,6 +8,7 @@ pub mod runtime;
 pub mod services;
 pub mod storage;
 mod verification;
+mod verification_tools;
 pub mod update_feed;
 pub type Result<T> = std::result::Result<T, String>;
 pub fn text<'a>(v: &'a serde_json::Value, key: &str) -> &'a str {

@@ -68,6 +68,7 @@ export interface AppState extends Prefs {
   syncing: boolean;
   lastSync: number;
   lastSyncAttempt: number;
+  importOpen: boolean;
   paletteOpen: boolean;
   shortcutsOpen: boolean;
   toasts: Toast[];
@@ -121,6 +122,7 @@ export const store = createStore<AppState>({
   syncing: false,
   lastSync: 0,
   lastSyncAttempt: 0,
+  importOpen: false,
   paletteOpen: false,
   shortcutsOpen: false,
   toasts: [],

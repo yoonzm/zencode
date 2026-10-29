@@ -1,3 +1,4 @@
+import { taskRef } from "@/lib/task";
 import { Moon, PanelLeft, PanelLeftClose, Search, Sun, Monitor } from "@/lib/icons";
 import { useApp } from "@/store/state";
 import { cycleTheme, setPalette, toggleSidebar } from "@/store/actions";
@@ -18,7 +19,7 @@ export function TitleBar() {
   let title = "任务";
   if (route.name === "task") {
     const t = tasks.find((x) => x.id === route.id);
-    title = t ? `${t.kind === "bug" ? "Bug" : "需求"} #${t.no}` : "任务";
+    title = t ? taskRef(t) : "任务";
   } else if (route.name === "prefs") title = "设置";
   else if (route.name === "setup") title = "首次配置";
 

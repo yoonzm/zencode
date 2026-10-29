@@ -17,7 +17,31 @@ function Block({ title, children }: { title?: string; children: any }) {
   );
 }
 
+function ManualSource({ task }: { task: ZTask }) {
+  return (
+    <div className="h-full overflow-y-auto px-5 py-5">
+      <div className="mx-auto max-w-3xl space-y-5 text-sm leading-[1.7]">
+        <Block title="整理后的内容">
+          <div className="space-y-4">
+            {task.description.map((b, i) => (
+              <Block key={i} title={b.title}>
+                {b.type === "p" && <p className="selectable text-foreground/90">{b.text}</p>}
+                {b.type === "list" && <ul className="selectable list-disc space-y-1 pl-5 marker:text-subtle-foreground">{b.items!.map((s, k) => <li key={k}>{s}</li>)}</ul>}
+              </Block>
+            ))}
+          </div>
+        </Block>
+        <Block title="你输入的原文">
+          <pre className="selectable whitespace-pre-wrap rounded-lg border border-border bg-muted/40 p-3 font-sans text-sm leading-[1.7] text-foreground/90">{task.source}</pre>
+        </Block>
+        <p className="text-xs text-muted-foreground">手动新增的任务只保存在本机，不会同步到禅道。</p>
+      </div>
+    </div>
+  );
+}
+
 export function ZentaoTab({ task }: { task: ZTask }) {
+  if (task.manual) return <ManualSource task={task} />;
   const fields: [string, any][] = [
     ["禅道状态", task.ztStatus],
     ["所属产品", task.product],

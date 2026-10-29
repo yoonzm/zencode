@@ -1,3 +1,4 @@
+import { taskNo } from "@/lib/task";
 import type { RunState, ZTask } from "@/data/types";
 import type { Filters } from "./state";
 import { EMPTY_FILTERS } from "./state";
@@ -15,7 +16,7 @@ export function filterTasks(tasks: ZTask[], f: Filters): ZTask[] {
     if (f.assignee === "me" && t.assignee !== ME) return false;
     if (f.products.length && !f.products.includes(t.product)) return false;
     if (q) {
-      const hay = `${t.kind === "bug" ? "bug" : "需求"} #${t.no} ${t.no} ${t.title} ${t.module} ${t.product} ${t.labels.join(" ")}`;
+      const hay = `${t.kind === "bug" ? "bug" : "需求"} #${t.no} ${taskNo(t)} ${t.title} ${t.module} ${t.product} ${t.labels.join(" ")}`;
       if (!fuzzy(q, hay)) return false;
     }
     return true;

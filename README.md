@@ -1,6 +1,6 @@
 # ZenCode
 
-Tauri 2 + Rust desktop application, retaining the React / TypeScript / Tailwind 4 interface from [yoonzm/zencode-ui](https://github.com/yoonzm/zencode-ui), initial baseline `33c33acb1e557d00d4016fcb9d677cd44ff0ed88`, with UI components synchronized through `172a828`. Desktop service wiring and fixes are retained; prototype simulation controls are excluded.
+Tauri 2 + Rust desktop application, retaining the React / TypeScript / Tailwind 4 interface from [yoonzm/zencode-ui](https://github.com/yoonzm/zencode-ui), initial baseline `33c33acb1e557d00d4016fcb9d677cd44ff0ed88`, with UI components synchronized through `c079165`. Desktop service wiring and fixes are retained; prototype simulation controls are excluded.
 
 ## Development
 
@@ -64,7 +64,7 @@ Tag pushes now run a lightweight build-decision check before allocating the Wind
 
 Product mappings support an enabled switch and free-form verification instructions. After code changes and self-checks, Codex prepares a separate test plan and executes it, optionally waiting for plan confirmation in Codex settings. The verification tab shows the plan, reported evidence and actual command logs; reviewable tasks can run verification again. Missing/disabled instructions, skipped plans, interruptions or invalid reports remain unverified. Reports require nonempty steps with evidence before showing passed; results are Codex-reported and need human review. MR descriptions include the report, and anything other than passed forces a Draft MR. Existing repository role/test-command values remain compatible although the simplified mapping editor no longer edits them.
 
-Prototype-only AI draft, simulated trial-run and synthetic recording controls are excluded. No browser recording is fabricated. Live end-to-end validation still depends on the configured CLI tools and target environment.
+The mapping editor's **AI draft** clones the currently selected repository branches into an isolated temporary directory and asks Codex to read their actual documentation, scripts and test configuration. The generated instructions are previewed and replace the current draft only when explicitly applied. **Trial run** clones those same target branches and executes the current unsaved instructions through Codex, honoring its configured sandbox, command approvals and optional test-plan confirmation. It shows source commits, command logs and a structured result; cancellation, missing environments and invalid reports cannot produce a successful result. Trial runs do not create task records or MRs. Only one mapping tool runs at a time, with a 30-minute limit; closing its dialog cancels it. Sessions are closed and temporary directories are cleaned up when the operation ends. Cleanup failures are shown in the logs. Synthetic recording controls remain excluded. Live model and target-environment validation still depends on the configured CLI tools and environment; regression tests use a real Git HTTP clone and a controlled app-server fixture.
 
 ## Application updates
 
@@ -85,3 +85,9 @@ Before installation the backend serializes with synchronization and MR submissio
 The desktop workflow embeds the public key, creates signed NSIS/macOS updater bundles, and retains the normal DMG installers. The release workflow requires all three platforms, signatures and checksums before publishing the draft; it attaches an immutable channel manifest to each release. Beta releases are marked prerelease. Manual publication of an old installer-only build fails explicitly because it has no signed updater artifacts. Branch builds can still run without signing credentials, but About reports that automatic updating is unavailable in such builds. Updater signatures are separate from Windows Authenticode/macOS signing and notarization.
 
 The first updater-capable version must be installed manually. Validate an actual old-to-new upgrade on Windows x64 and both macOS architectures before distributing broadly; automated tests do not replace this installer roundtrip. No signing credentials, remote configuration or release publication are performed by a local code change.
+
+## Manual requirements
+
+The task list and command palette offer **新增需求**: paste source text, ask the configured Codex CLI to organize it, review/edit the candidates, then import. Organization is read-only with tools disabled and a three-minute timeout; errors preserve the input. Only source text and configured product names are sent to the model. Generated content requires review.
+
+Import persists the entire batch atomically, creates one idle task per mapped repository, and retains the original source. Manual tasks use N-prefixed local numbers, survive ZenTao synchronization, and never auto-run on import or link to ZenTao. Deletion cannot restore them through synchronization. They use the existing execution, verification and MR workflow; MR descriptions identify the manual origin. Local fixture tests cover organization and persistence; live model and native desktop validation remain environment-dependent.

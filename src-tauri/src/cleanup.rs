@@ -3,6 +3,7 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 pub fn same(a: &Value, b: &Value) -> bool {
+    if a["manual"].as_bool().unwrap_or(false) != b["manual"].as_bool().unwrap_or(false) { return false; }
     (!a["id"].is_null() && a["id"] == b["id"]) || (!a["no"].is_null() && a["kind"] == b["kind"] && a["no"] == b["no"] && a["repoId"] == b["repoId"])
 }
 pub fn closed(t: &Value) -> bool {
@@ -46,6 +47,12 @@ pub fn workspace(root: &Path, t: &Value) -> Result<Option<PathBuf>> {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn manual_numbers_never_match_zentao_numbers() {
+        let manual = json!({"id":"manual-1","manual":true,"kind":"bug","no":1,"repoId":"a"});
+        let zentao = json!({"id":"bug-1","kind":"bug","no":1,"repoId":"a"});
+        assert!(!same(&manual, &zentao)); assert!(!same(&zentao, &manual)); assert!(same(&manual, &manual));
+    }
     #[test]
     fn excludes_live_and_recent_tasks() {
         for state in ["idle", "running", "queued", "waiting"] {

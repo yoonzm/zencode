@@ -9,6 +9,7 @@ import { Sidebar, SidebarRail, RAIL_W, SIDEBAR_W } from "@/components/shell/side
 import { TasksView } from "@/components/views/tasks-view";
 import { Wizard } from "@/components/views/wizard";
 import { Settings } from "@/components/views/settings";
+import { ImportDialog } from "@/components/views/import-dialog";
 import { CommandPalette } from "@/components/views/palette";
 import { ConfirmHost, ShortcutsDialog } from "@/components/views/overlays";
 import { ToastViewport } from "@/components/ui/toast";
@@ -113,6 +114,7 @@ export function AppShell() {
       <ToastViewport />
       <CommandPalette />
       <ConfirmHost />
+      <ImportDialog />
       <ShortcutsDialog />
     </div>
   );

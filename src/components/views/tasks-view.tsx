@@ -1,3 +1,4 @@
+import { taskRef } from "@/lib/task";
 import { useMemo } from "react";
 import { cn, clamp } from "@/lib/utils";
 import { useApp, store } from "@/store/state";
@@ -62,7 +63,7 @@ function DetailEmpty() {
         <p className="mt-1.5 text-sm leading-5 text-muted-foreground">在左侧选择 Bug 或需求，查看 Codex 做了什么、改了哪些代码，并随时暂停或追加指令。</p>
         {next && (
           <Button variant="primary" className="mt-4" onClick={() => navigate({ name: "task", id: next.id })}>
-            先看需要你处理的：{next.kind === "bug" ? "Bug" : "需求"} #{next.no}
+            先看需要你处理的：{taskRef(next)}
           </Button>
         )}
         <ul className="mt-6 space-y-2 text-sm text-muted-foreground">

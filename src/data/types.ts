@@ -118,6 +118,8 @@ export interface ZTask {
   title: string;
   priority: Priority;
   severity?: 1 | 2 | 3 | 4;
+  manual?: boolean;
+  source?: string;
   ztStatus: string; // 禅道状态（只读，从禅道同步）：激活 / 已解决 / 评审中 …
   product: string;
   module: string;

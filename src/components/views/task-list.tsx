@@ -1,10 +1,11 @@
+import { taskNo } from "@/lib/task";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/primitives/popover";
 import { cn } from "@/lib/utils";
-import { ChevronDown, ChevronRight, Inbox, ListFilter, RefreshCw, Search, SearchX, WifiOff, X, Layers, ArrowUpDown, Rows, LayoutList } from "@/lib/icons";
+import { Plus, ChevronDown, ChevronRight, Inbox, ListFilter, RefreshCw, Search, SearchX, WifiOff, X, Layers, ArrowUpDown, Rows, LayoutList } from "@/lib/icons";
 import { useApp, store } from "@/store/state";
 import { filterTasks, groupTasks, hasActiveFilters, sortTasks } from "@/store/select";
-import { resetFilters, setFilters, sync } from "@/store/actions";
+import { resetFilters, setFilters, setImportOpen, sync } from "@/store/actions";
 import { navigate, useRoute } from "@/lib/route";
 import { useNow } from "@/lib/hooks";
 import { dueLabel, relTime, shortTime } from "@/lib/time";
@@ -82,7 +83,7 @@ const TaskRow = memo(function TaskRow({ t, selected, compact, now }: { t: ZTask;
     >
       <PriorityIcon p={t.priority} />
       <KindIcon kind={t.kind} className={cn(!compact && "self-start mt-[15px]")} />
-      <span className={cn("w-12 shrink-0 font-mono text-xs tabular-nums text-muted-foreground", !compact && "self-start mt-[15px]")}>{t.no}</span>
+      <span className={cn("w-12 shrink-0 font-mono text-xs tabular-nums text-muted-foreground", !compact && "self-start mt-[15px]")}>{taskNo(t)}</span>
       <span className="min-w-0 flex-1">
         <span className={cn("block truncate text-sm", selected ? "font-medium text-foreground" : "text-foreground")}>{t.title}</span>
         {!compact && (
@@ -292,6 +293,11 @@ export function TaskListPane({ className }: { className?: string }) {
         )}
         <div className="ml-auto flex items-center gap-0.5">
           <span className="mr-1 hidden text-xs text-subtle-foreground @lg:block">{syncing ? "正在同步…" : `同步于 ${relTime(lastSync, now)}`}</span>
+          <Tip label="新增需求">
+            <Button variant="ghost" size="icon-sm" onClick={() => setImportOpen(true)} aria-label="新增需求">
+              <Plus />
+            </Button>
+          </Tip>
           <Tip label="从禅道同步">
             <Button variant="ghost" size="icon-sm" onClick={() => sync()} aria-label="从禅道同步" disabled={syncing}>
               <RefreshCw className={cn(syncing && "animate-spin")} />

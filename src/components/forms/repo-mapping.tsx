@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Trash, FolderGit, RefreshCw, Sparkles, X } from "@/lib/icons";
+import { Plus, Trash, FolderGit, RefreshCw, Sparkles, X, Play } from "@/lib/icons";
 import type { AppConfig, AiSuggestion, RepoLink, RepoMapping } from "@/data/types";
 import { desktopCall } from "@/lib/desktop";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { relTime } from "@/lib/time";
 import { store } from "@/store/state";
 
 import { AiMatchDialog } from "./ai-match";
+import { VerificationToolDialog } from "./verification-tool";
 
 export function mappingErrors(m: RepoMapping) {
   const seen = new Set<string>();
@@ -44,7 +45,8 @@ function Label({ children, error }: { children: React.ReactNode; error?: string 
   );
 }
 
-function VerifySection({ m, onChange }: { m: RepoMapping; onChange: (v: VerifyConfig) => void }) {
+function VerifySection({ m, onChange, config }: { m: RepoMapping; onChange: (v: VerifyConfig) => void; config: AppConfig }) {
+  const [tool, setTool] = useState<"draft" | "trial" | null>(null);
   const v = verifyOf(m.verify);
   const set = (p: Partial<VerifyConfig>) => onChange({ ...v, ...p });
   return (
@@ -67,6 +69,12 @@ function VerifySection({ m, onChange }: { m: RepoMapping; onChange: (v: VerifyCo
               className="w-full resize-y rounded-md border border-input bg-background px-2.5 py-2 text-sm leading-[1.6] font-normal text-foreground outline-none placeholder:text-subtle-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
             />
           </Label>
+          <div className="flex justify-end gap-1">
+            <Button variant="ghost" size="sm" disabled={mappingHasError(m)} onClick={() => setTool("draft")}><Sparkles />AI 生成草稿</Button>
+            <Button variant="ghost" size="sm" disabled={mappingHasError(m) || !v.prompt.trim()} onClick={() => setTool("trial")}><Play />试运行</Button>
+          </div>
+          {mappingHasError(m) && <p className="text-xs text-muted-foreground">选择产品、仓库和分支后可生成草稿或试运行。</p>}
+          {tool && <VerificationToolDialog mode={tool} mapping={m} config={config} onApply={prompt => set({ prompt })} onClose={() => setTool(null)} />}
         </div>
       )}
     </div>
@@ -205,7 +213,7 @@ export function RepoMappingEditor({ value, onChange, showErrors, config }: { val
                 <Button variant="ghost" size="sm" className="mt-2" onClick={() => updateMap(m.id, (x) => ({ ...x, repos: [...x.repos, newLink()] }))}>
                   <Plus />添加仓库
                 </Button>
-                <VerifySection m={m} onChange={(v) => updateMap(m.id, (x) => ({ ...x, verify: v }))} />
+                <VerifySection m={m} config={cfg} onChange={(v) => updateMap(m.id, (x) => ({ ...x, verify: v }))} />
               </li>
             );
           })}

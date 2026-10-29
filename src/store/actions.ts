@@ -1,4 +1,4 @@
-import { store, applyTheme, EMPTY_FILTERS, type Filters, type ThemePref } from "./state";
+import { flushPrefs, store, applyTheme, EMPTY_FILTERS, type Filters, type ThemePref } from "./state";
 import { toast } from "./toast";
 import { getTask, updateTask } from "@/engine/tasks";
 import type { Run, ZTask } from "@/data/types";
@@ -79,7 +79,7 @@ export function describeClear(products: string[] | "all") {
   const tasks = store.get().tasks.filter(t => products === "all" || products.includes(t.product));
   const active = tasks.filter(t => ["queued", "running", "waiting", "paused"].includes(t.run.state)).length;
   return { count: tasks.length, notes: [
-    "禅道里的任务不受影响，下次同步会作为新任务重新出现。",
+    "禅道里的任务不受影响，下次同步会作为新任务重新出现。手动新增的任务删除后无法通过同步找回。",
     active ? `其中 ${active} 个正在进行的任务会被终止。` : "",
     tasks.some(t => t.run.mr) ? "GitLab 上的 MR 保留，本地会失去对应关系。" : "",
     (store.get().config.zentao.autoRun ?? true) ? "同步后自动执行已开启，手动清除的任务重新同步后会自动执行。" : "",
@@ -95,7 +95,7 @@ export function deleteTask(id: string) {
   if (!task) return;
   askConfirm({
     title: "删除这个任务？",
-    desc: `${task.title} 只会从 ZenCode 中删除，禅道中的任务不受影响。正在进行的执行会被终止，执行记录将从任务中移除。已有独立工作区和 Git 分支保留在磁盘，但不会复用；下次同步时此任务将从头开始。`,
+    desc: task.manual ? `${task.title} 是手动新增的，删除后无法通过同步找回。正在进行的执行会被终止，已有独立工作区和 Git 分支保留在磁盘。` : `${task.title} 只会从 ZenCode 中删除，禅道中的任务不受影响。正在进行的执行会被终止，执行记录将从任务中移除。已有独立工作区和 Git 分支保留在磁盘，但不会复用；下次同步时此任务将从头开始。`,
     confirmLabel: "删除",
     danger: true,
     onConfirm: async () => {
@@ -107,7 +107,7 @@ export function deleteTask(id: string) {
           return { tasks, listStatus: tasks.length ? "ready" : "empty" };
         });
         if (location.hash === `#task-${id}`) navigate({ name: "tasks" });
-        toast({ title: "已删除任务", desc: "下次同步会从禅道重新拉回，并从头开始。", tone: "info", action: { label: "立即同步", run: () => { void sync(); } } });
+        toast(task.manual ? { title: "已删除任务", tone: "info" } : { title: "已删除任务", desc: "下次同步会从禅道重新拉回，并从头开始。", tone: "info", action: { label: "立即同步", run: () => { void sync(); } } });
       } catch (e) { report(e); }
     },
   });
@@ -118,7 +118,7 @@ export function sendInstruction(id: string, text: string, ref?: string) { startR
 export function createMr(id: string) { return runCall("mr", { id }); }
 export function openExternal(url: string) { void desktopCall("open", { url }).catch(report); }
 export function decodeTask(t: ZTask): ZTask {
-  t.description = t.description.map(b => b.text ? { ...b, text: new DOMParser().parseFromString(b.text, "text/html").body.textContent || "" } : b);
+  if (!t.manual) t.description = t.description.map(b => b.text ? { ...b, text: new DOMParser().parseFromString(b.text, "text/html").body.textContent || "" } : b);
   const raw = (t.run as any).rawDiff as string | undefined;
   if (raw) t.run.files = raw.split(/^diff --git /m).slice(1).map(part => {
     const lines = part.split("\n");
@@ -169,3 +169,12 @@ export const newId = uid;
 
 export function decideVerify(id: string, go: boolean) { void runCall("verifyDecision", { id, go }); }
 export function reverify(id: string) { void runCall("reverify", { id }); }
+
+export const setImportOpen = (open: boolean) => store.set({ importOpen: open });
+export async function importManual(cands: import("@/data/parse").Candidate[], source: string) {
+  await flushPrefs();
+  const made: ZTask[] = await desktopCall("importManual", { candidates: cands, source });
+  taskRevision++;
+  store.set(s => ({ tasks: [...made.map(decodeTask), ...s.tasks.filter(t => !made.some(m => m.id === t.id))], listStatus: "ready", importOpen: false }));
+  toast({ title: `已导入 ${made.length} 个任务`, desc: "在待处理里，需要你手动交给 Codex", tone: "success" });
+}

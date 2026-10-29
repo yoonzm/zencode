@@ -1,12 +1,13 @@
+import { taskNo, taskRef } from "@/lib/task";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Command as Cmdk } from "cmdk";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/primitives/dialog";
 import { cn } from "@/lib/utils";
-import { ArrowRight, Bug, Command as CommandIcon, CornerDownLeft, GitBranch, GitPullRequest, Inbox, Keyboard, ListFilter, Monitor, Moon, PanelLeft, Pause, Play, RefreshCw, RotateCcw, Rocket, Search, Settings, Sun, Eye, Code, Lightbulb, User, Sparkles, Loader, ShieldCheck } from "@/lib/icons";
+import { Plus, ArrowRight, Bug, Command as CommandIcon, CornerDownLeft, GitBranch, GitPullRequest, Inbox, Keyboard, ListFilter, Monitor, Moon, PanelLeft, Pause, Play, RefreshCw, RotateCcw, Rocket, Search, Settings, Sun, Eye, Code, Lightbulb, User, Sparkles, Loader, ShieldCheck } from "@/lib/icons";
 import { useApp, store } from "@/store/state";
 import { useRoute, navigate } from "@/lib/route";
 import { fuzzy } from "@/lib/fuzzy";
-import { setPalette, setShortcuts, setTheme, setFilters, resetFilters, sync, toggleSidebar, startRun, pauseRun, resumeRun, createMr, retryRun, setTab, openTask } from "@/store/actions";
+import { setPalette, setShortcuts, setTheme, setFilters, resetFilters, sync, toggleSidebar, startRun, pauseRun, resumeRun, createMr, retryRun, setTab, openTask, setImportOpen } from "@/store/actions";
 import { EMPTY_FILTERS } from "@/store/state";
 import { copyText } from "@/lib/clipboard";
 import { Kbd } from "@/components/ui/kbd";
@@ -72,7 +73,7 @@ export function CommandPalette() {
     const cur = route.name === "task" ? tasks.find((t) => t.id === route.id) : undefined;
     if (cur) {
       const st = cur.run.state;
-      const label = `${cur.kind === "bug" ? "Bug" : "需求"} #${cur.no}`;
+      const label = taskRef(cur);
       if (st === "idle") list.push({ id: "c-start", group: "当前任务", title: "交给 Codex 执行", hint: label, icon: Play, run: done(() => startRun(cur.id)) });
       if (st === "running") list.push({ id: "c-pause", group: "当前任务", title: "暂停执行", hint: label, icon: Pause, run: done(() => pauseRun(cur.id)) });
       if (st === "paused") list.push({ id: "c-resume", group: "当前任务", title: "恢复执行", hint: label, icon: Play, run: done(() => resumeRun(cur.id)) });
@@ -81,7 +82,7 @@ export function CommandPalette() {
       list.push({ id: "c-instr", group: "当前任务", title: "追加指令…", hint: label, icon: Sparkles, keywords: "输入 指令 要求", run: done(() => { setTab("run"); setTimeout(() => document.getElementById("composer")?.focus(), 30); }) });
       list.push({ id: "c-run", group: "当前任务", title: "查看执行过程", icon: Loader, keys: ["1"], run: done(() => setTab("run")) });
       list.push({ id: "c-diff", group: "当前任务", title: "查看代码变更", icon: Code, keys: ["2"], run: done(() => setTab("diff")) });
-      list.push({ id: "c-zt", group: "当前任务", title: "查看禅道原文", icon: Eye, keys: ["4"], run: done(() => setTab("zentao")) });
+      list.push({ id: "c-zt", group: "当前任务", title: cur.manual ? "查看原文" : "查看禅道原文", icon: Eye, keys: ["4"], run: done(() => setTab("zentao")) });
       list.push({ id: "c-verify", group: "当前任务", title: "查看验证结果", icon: ShieldCheck, keys: ["3"], run: done(() => setTab("verify")) });
       if (cur.run.branch) list.push({ id: "c-copy", group: "当前任务", title: "复制分支名", hint: cur.run.branch, icon: GitBranch, run: done(() => copyText(cur.run.branch!, "已复制分支名")) });
     }
@@ -89,6 +90,7 @@ export function CommandPalette() {
     list.push(
       { id: "g-sync", group: "操作", title: "从禅道同步任务", icon: RefreshCw, keywords: "刷新 sync", run: done(() => sync()) },
       { id: "g-sidebar", group: "操作", title: "收起 / 展开侧边栏", icon: PanelLeft, keys: ["mod", "B"], run: done(toggleSidebar) },
+      { id: "g-new", group: "操作", title: "新增需求…", icon: Plus, keywords: "导入 粘贴 手动 需求 整理", run: done(() => setImportOpen(true)) },
       { id: "g-settings", group: "操作", title: "打开设置", icon: Settings, keys: ["mod", ","], keywords: "偏好 配置", run: done(() => navigate({ name: "prefs", section: "general" })) },
       { id: "g-wizard", group: "操作", title: "重新运行配置向导", icon: Rocket, keywords: "首次 引导 setup", run: done(() => navigate({ name: "setup" })) },
       { id: "g-keys", group: "操作", title: "显示键盘快捷键", icon: Keyboard, keys: ["?"], run: done(() => setShortcuts(true)) },
@@ -111,8 +113,8 @@ export function CommandPalette() {
       list.push({
         id: `task-${t.id}`,
         group: "任务",
-        title: `${t.kind === "bug" ? "Bug" : "需求"} #${t.no} ${t.title}`,
-        keywords: `${t.module} ${t.product} ${t.no}`,
+        title: `${taskRef(t)} ${t.title}`,
+        keywords: `${t.module} ${t.product} ${taskNo(t)}`,
         node: <StateIcon state={t.run.state} />,
         hint: STATE_LABEL[t.run.state],
         run: done(() => openTask(t.id)),
