@@ -54,3 +54,10 @@ if __name__ == '__main__':
                 shutil.move(str(source), str(dest))
                 signature = Path(str(source) + '.sig')
                 if signature.exists(): shutil.move(str(signature), str(dest) + '.sig')
+    if os.environ.get('UPDATER_PUBLIC_KEY', '').strip():
+        if 'apple-darwin' in target:
+            artifact = base / f'ZenCode_{version}_{arch}.app.tar.gz'
+        else:
+            artifact = Path('src-tauri/target') / target / f'release/bundle/nsis/ZenCode_{version}_x64-setup.exe'
+        assert artifact.is_file() and artifact.stat().st_size > 0, f'Missing updater bundle: {artifact}'
+        assert Path(str(artifact) + '.sig').is_file(), f'Missing updater signature: {artifact}'

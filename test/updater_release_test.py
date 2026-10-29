@@ -12,6 +12,7 @@ class UpdaterReleaseTests(unittest.TestCase):
         workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/desktop.yml').read_text(encoding='utf-8')
         self.assertIn("'plugins': {'updater': {'pubkey': os.environ.get('UPDATER_PUBLIC_KEY', '').strip()}}", workflow)
         self.assertIn('ZENCODE_UPDATER_PUBLIC_KEY: ${{ vars.ZENCODE_UPDATER_PUBLIC_KEY }}', workflow)
+        self.assertEqual(workflow.count('bundles: app,dmg'), 2)
 
     def test_manifest_platforms_channels_and_signatures(self):
         for version in ['0.2.0', '0.3.0-beta.1']:

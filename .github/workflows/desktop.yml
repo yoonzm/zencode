@@ -35,10 +35,10 @@ jobs:
             bundles: nsis
           - os: macos-15-intel
             target: aarch64-apple-darwin
-            bundles: dmg
+            bundles: app,dmg
           - os: macos-15-intel
             target: x86_64-apple-darwin
-            bundles: dmg
+            bundles: app,dmg
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     steps:
@@ -80,6 +80,7 @@ jobs:
       - name: Name updater artifacts by architecture
         env:
           BUILD_TARGET: ${{ matrix.target }}
+          UPDATER_PUBLIC_KEY: ${{ vars.ZENCODE_UPDATER_PUBLIC_KEY }}
         run: python3 .github/scripts/updater_release.py
       - name: Verify macOS disk image
         if: runner.os == 'macOS'
