@@ -88,7 +88,6 @@ function Actions({ task }: { task: ZTask }) {
             <Button variant="ghost" onClick={() => copyText(run.mr!.url, "已复制 MR 链接")}><Copy />复制 MR 链接</Button>
             <span className="text-sm text-success" role="status">MR 已创建</span>
           </>}
-          <Button variant="secondary" onClick={() => document.getElementById("composer")?.focus()}>要求修改</Button>
         </>
       )}
       {s === "done" && (

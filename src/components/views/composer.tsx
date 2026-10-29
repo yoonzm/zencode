@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { ArrowUp, Cpu, Play, Square, X } from "@/lib/icons";
+import { ArrowUp, Cpu, Play, X } from "@/lib/icons";
 import type { ZTask } from "@/data/types";
 import { SANDBOX_LABEL } from "@/data/types";
 import { store, useApp } from "@/store/state";
@@ -156,11 +156,12 @@ export function Composer({ task }: { task: ZTask }) {
                 disabled={!stoppable && !canSend}
                 aria-label={stoppable ? "停止" : idle ? "交给 Codex 执行" : "发送指令"}
                 className={cn(
-                  "inline-flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-lg px-2.5 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/60",
+                  "inline-flex h-7 shrink-0 items-center justify-center gap-1.5 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/60",
+                  idle ? "rounded-lg px-2.5" : "w-7 rounded-full",
                   stoppable ? "bg-foreground text-background hover:bg-foreground/85" : canSend ? "bg-primary text-primary-foreground hover:bg-primary/88" : "bg-muted text-subtle-foreground",
                 )}
               >
-                {stoppable ? <Square className="size-3.5 fill-current" /> : idle ? <><Play className="size-3.5" />交给 Codex</> : <ArrowUp className="size-4" />}
+                {stoppable ? <span className="size-2.5 rounded-[3px] bg-current" /> : idle ? <><Play className="size-3.5" />交给 Codex</> : <ArrowUp className="size-4" />}
               </button>
             </div>
           </div>

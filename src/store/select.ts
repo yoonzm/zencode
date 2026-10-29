@@ -23,11 +23,17 @@ export function filterTasks(tasks: ZTask[], f: Filters): ZTask[] {
   });
 }
 
+// 执行中的任务每个 tick 都会更新 updatedAt，直接按它排会来回跳；
+// 进行中的任务用开始时间作为排序依据，再用 id 兜底，保证顺序稳定
+const LIVE = new Set(["queued", "running", "waiting"]);
+const stamp = (t: ZTask) => (LIVE.has(t.run.state) ? (t.run.startedAt ?? t.createdAt ?? 0) : t.updatedAt);
+const byId = (a: ZTask, b: ZTask) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
 export function sortTasks(tasks: ZTask[], sort: "updated" | "priority" | "deadline"): ZTask[] {
   const arr = tasks.slice();
-  if (sort === "priority") arr.sort((a, b) => a.priority - b.priority || b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
-  else if (sort === "deadline") arr.sort((a, b) => (a.deadline ?? Infinity) - (b.deadline ?? Infinity) || a.priority - b.priority || a.id.localeCompare(b.id));
-  else arr.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
+  if (sort === "priority") arr.sort((a, b) => a.priority - b.priority || stamp(b) - stamp(a) || byId(a, b));
+  else if (sort === "deadline") arr.sort((a, b) => (a.deadline ?? Infinity) - (b.deadline ?? Infinity) || a.priority - b.priority || byId(a, b));
+  else arr.sort((a, b) => stamp(b) - stamp(a) || byId(a, b));
   return arr;
 }
 
