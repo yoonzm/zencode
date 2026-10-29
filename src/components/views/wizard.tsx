@@ -28,7 +28,7 @@ const BLANK: AppConfig = {
   zentao: { baseUrl: "", edition: "biz", auth: "token", account: "", secret: "", scope: "mine", syncIntervalMin: 5, connected: false },
   gitlab: { baseUrl: "", token: "", targetBranch: "main", mrDraft: true, connected: false },
   codex: { cliPath: "", model: "Codex · 标准", sandbox: "workspace-write", concurrency: 3, connected: false },
-  mappings: [{ id: "w1", product: "企业管理后台", repo: "", localPath: "", branch: "main", testCmd: "" }],
+  mappings: [{ id: "w1", product: "企业管理后台", repo: "", branch: "", testCmd: "" }],
 };
 
 export function Wizard() {
@@ -148,11 +148,11 @@ export function Wizard() {
               <div>
                 <Logo size={40} className="mb-6 text-foreground" />
                 <h1 className="text-2xl font-semibold leading-8 text-foreground text-balance">把禅道里的待办，交给 Codex 去改</h1>
-                <p className="mt-3 text-base leading-6 text-muted-foreground">ZenCode 读取分配给你的 Bug 和需求，让 Codex 在本地仓库里修改、跑测试，你只需要审核结果，再一键创建 Merge Request。</p>
+                <p className="mt-3 text-base leading-6 text-muted-foreground">ZenCode 读取分配给你的 Bug 和需求，让 Codex 拉取最新代码、修改并跑测试，你只需要审核结果，再一键创建 Merge Request。</p>
                 <ul className="mt-8 space-y-4">
                   {[
                     ["先连接三样东西", "禅道提供任务，GitLab 接收代码，Codex 负责执行。"],
-                    ["告诉它代码在哪", "把每个禅道产品对应到一个 GitLab 仓库和本地克隆。"],
+                    ["告诉它代码在哪", "把每个禅道产品对应到一个 GitLab 仓库和分支，每次新执行都会重新拉取代码。"],
                     ["你始终握有方向盘", "可以随时暂停、追加指令，越界的命令会先问你。"],
                   ].map(([t, d], k) => (
                     <li key={t} className="flex gap-3">

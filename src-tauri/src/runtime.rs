@@ -218,6 +218,17 @@ impl Runtime {
                 self.persist().await?;
                 Ok(Value::Null)
             }
+            "gitlabRepos" => {
+                let api = services::gitlab(&args["config"]["gitlab"])?;
+                let rows = api.gitlab_pages("/projects?simple=true").await?;
+                Ok(json!(rows.iter().map(|p| json!({"path":p["path_with_namespace"],"defaultBranch":p["default_branch"].as_str().unwrap_or("")})).collect::<Vec<_>>()))
+            }
+            "gitlabBranches" => {
+                let api = services::gitlab(&args["config"]["gitlab"])?;
+                let repo = url::form_urlencoded::byte_serialize(text(&args, "repo").as_bytes()).collect::<String>();
+                let rows = api.gitlab_pages(&format!("/projects/{repo}/repository/branches")).await?;
+                Ok(json!(rows.iter().filter_map(|b| b["name"].as_str()).collect::<Vec<_>>()))
+            }
             "matchRepos" => {
                 let api = services::gitlab(&args["config"]["gitlab"])?;
                 let products = self.data.lock().await["products"]
@@ -249,7 +260,7 @@ impl Runtime {
                         .collect::<Vec<_>>();
                     if exact.len() == 1 {
                         let p = exact[0];
-                        matches.push(json!({"id":Uuid::new_v4().to_string(),"product":name,"repo":p["path_with_namespace"],"branch":p["default_branch"].as_str().unwrap_or("main"),"localPath":"","testCmd":""}));
+                        matches.push(json!({"id":Uuid::new_v4().to_string(),"product":name,"repo":p["path_with_namespace"],"branch":p["default_branch"].as_str().unwrap_or("main"),"testCmd":""}));
                     }
                 }
                 Ok(json!(matches))
@@ -510,37 +521,25 @@ impl Runtime {
             .await?;
         let mut t = self.task(id).await?;
         if text(&t["run"], "worktree").is_empty() {
-            let repo = services::local_path(text(mapping, "localPath"));
-            command("git", &["rev-parse", "--show-toplevel"], Some(&repo)).await?;
-            command(
-                "git",
-                &["check-ref-format", "--branch", text(mapping, "branch")],
-                Some(&repo),
-            )
-            .await?;
+            command("git", &["check-ref-format", "--branch", text(mapping, "branch")], None).await?;
+            let api = services::gitlab(&config["gitlab"])?;
+            let encoded = url::form_urlencoded::byte_serialize(text(mapping, "repo").as_bytes()).collect::<String>();
+            let project = api.request(&format!("/projects/{encoded}"), "GET", None).await?;
+            let remote = text(&project, "ssh_url_to_repo");
+            let remote = if remote.is_empty() { text(&project, "http_url_to_repo") } else { remote };
+            if remote.is_empty() || remote.starts_with('-') { return Err("GitLab 项目没有有效的克隆地址".into()); }
             let suffix = format!("{}-{}", id, &Uuid::new_v4().to_string()[..8]);
             let branch = format!("zencode/{suffix}");
             let worktree = self.root.join("worktrees").join(&suffix);
             std::fs::create_dir_all(worktree.parent().unwrap()).map_err(|e| e.to_string())?;
-            command(
-                "git",
-                &[
-                    "worktree",
-                    "add",
-                    "-b",
-                    &branch,
-                    &worktree.to_string_lossy(),
-                    text(mapping, "branch"),
-                ],
-                Some(&repo),
-            )
-            .await?;
+            command("git", &["clone", "--single-branch", "--branch", text(mapping, "branch"), "--", remote, &worktree.to_string_lossy()], None).await?;
+            command("git", &["checkout", "-b", &branch], Some(&worktree)).await?;
             let base = command("git", &["rev-parse", "HEAD"], Some(&worktree)).await?;
             self.update(id, |t| {
                 t["run"]["worktree"] = json!(worktree);
                 t["run"]["branch"] = json!(branch);
                 t["run"]["base"] = json!(base);
-                t["run"]["repo"] = json!(repo);
+                t["run"]["repo"] = json!(worktree);
                 t["run"]["mapping"] = mapping.clone();
             })
             .await?;

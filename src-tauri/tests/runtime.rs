@@ -68,7 +68,20 @@ for line in sys.stdin:
     let initial = json!({"prefs":{},"products":[],"tasks":[{"id":"bug-1","no":1,"kind":"bug","title":"Fix","product":"P","description":[],"run":empty_run()}]});
     Storage::new(&data).save(&initial).unwrap();
     let rt = Runtime::new(data.clone(), Arc::new(|_, _| {})).unwrap();
-    let config = json!({"codex":{"cliPath":cli,"sandbox":"workspace-write","model":"Codex · 标准","concurrency":1},"mappings":[{"product":"P","localPath":repo,"repo":"team/app","branch":"main","testCmd":""}]});
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let clone_repo = repo.clone();
+    tokio::spawn(async move {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        loop {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = [0; 4096];
+            socket.read(&mut buf).await.unwrap();
+            let body = json!({"http_url_to_repo":clone_repo}).to_string();
+            socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body).as_bytes()).await.unwrap();
+        }
+    });
+    let config = json!({"gitlab":{"baseUrl":base_url,"token":"fixture"},"codex":{"cliPath":cli,"sandbox":"workspace-write","model":"fixture","concurrency":1},"mappings":[{"product":"P","repo":"team/app","branch":"main","testCmd":""}]});
     rt.call("start", json!({"id":"bug-1","config":config}))
         .await
         .unwrap();

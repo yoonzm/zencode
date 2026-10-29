@@ -142,6 +142,39 @@ async fn paginate_and_reject_http_auth_failure() {
 }
 
 #[tokio::test]
+async fn sync_includes_product_branches_across_story_pages() {
+    let base = server(Arc::new(|route, _| {
+        let url = url::Url::parse(&format!("http://localhost{route}")).unwrap();
+        let query: std::collections::HashMap<_, _> = url.query_pairs().collect();
+        match url.path() {
+            "/api.php/v1/products" => (200, json!({"products":[{"id":241,"name":"Mapped"}]})),
+            "/api.php/v1/products/241/bugs" => (200, json!({"bugs":[]})),
+            "/api.php/v1/products/241/stories" => {
+                // ZenTao omits stories in product branches unless explicitly requested.
+                if query.get("branch").map(|v| v.as_ref()) != Some("all") {
+                    return (200, json!({"stories":[],"total":0}));
+                }
+                let rows = if query.get("page").map(|v| v.as_ref()) == Some("1") {
+                    (1..=100).map(|id| json!({"id":id,"branch":389,"assignedTo":if id == 1 {"alice"} else {"bob"}})).collect::<Vec<_>>()
+                } else {
+                    vec![json!({"id":101,"branch":390,"assignedTo":{"account":"alice"}})]
+                };
+                (200, json!({"stories":rows,"total":101}))
+            }
+            "/api.php/v1/stories/1" | "/api.php/v1/stories/101" => {
+                let id: u64 = url.path().rsplit('/').next().unwrap().parse().unwrap();
+                (200, json!({"id":id,"title":"Branch story","assignedTo":"alice"}))
+            }
+            _ => (404, json!({})),
+        }
+    })).await;
+    let config = json!({"zentao":{"baseUrl":base,"auth":"token","secret":"fixture","account":"alice","scope":"mine"},"mappings":[{"product":"Mapped","repo":"team/app"}]});
+    let (tasks, _) = sync(&config).await.unwrap();
+    assert_eq!(tasks.iter().map(|t| t["id"].as_str().unwrap()).collect::<Vec<_>>(), vec!["story-1", "story-101"]);
+    assert!(tasks.iter().all(|t| t["repoId"] == "team/app" && t["assignee"] == "me"));
+}
+
+#[tokio::test]
 async fn submission_preserves_existing_mr_without_zentao_requests() {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use zencode_core::{
@@ -276,4 +309,61 @@ async fn legacy_pending_mr_finishes_without_zentao_access() {
         assert_eq!(data["tasks"][0]["ztStatus"], status);
         assert_eq!(writes.load(Ordering::SeqCst), 0);
     }
+}
+
+#[tokio::test]
+async fn gitlab_repository_and_branch_lists_paginate() {
+    use zencode_core::runtime::Runtime;
+    let base = server(Arc::new(|route, request| {
+        assert!(request.starts_with("GET "));
+        if route.starts_with("/api/v4/projects?simple=true&per_page=100&page=1") {
+            (200, json!((0..100).map(|i| json!({"path_with_namespace":format!("team/repo{i}"),"default_branch":"main"})).collect::<Vec<_>>()))
+        } else if route.starts_with("/api/v4/projects?simple=true&per_page=100&page=2") {
+            (200, json!([{"path_with_namespace":"team/last","default_branch":"develop"}]))
+        } else if route.starts_with("/api/v4/projects/team%2Flast/repository/branches?") {
+            (200, json!([{"name":"develop"},{"name":"release/1"}]))
+        } else { (404, json!({})) }
+    })).await;
+    let root = tempfile::tempdir().unwrap();
+    let rt = Runtime::new(root.path().into(), Arc::new(|_, _| {})).unwrap();
+    let config = json!({"gitlab":{"baseUrl":base,"token":"fixture"}});
+    let repos = rt.call("gitlabRepos", json!({"config":config})).await.unwrap();
+    assert_eq!(repos.as_array().unwrap().len(), 101);
+    assert_eq!(repos[100]["defaultBranch"], "develop");
+    let branches = rt.call("gitlabBranches", json!({"config":config,"repo":"team/last"})).await.unwrap();
+    assert_eq!(branches, json!(["develop","release/1"]));
+}
+
+#[tokio::test]
+async fn execution_clones_target_branch_without_local_mapping() {
+    use zencode_core::{runtime::Runtime, services::{command, empty_run}, storage::Storage};
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    std::fs::create_dir(&source).unwrap();
+    command("git", &["init", "-b", "develop"], Some(&source)).await.unwrap();
+    command("git", &["config", "user.email", "fixture@example.invalid"], Some(&source)).await.unwrap();
+    command("git", &["config", "user.name", "Fixture"], Some(&source)).await.unwrap();
+    std::fs::write(source.join("selected.txt"), "target branch").unwrap();
+    command("git", &["add", "."], Some(&source)).await.unwrap();
+    command("git", &["commit", "-m", "fixture"], Some(&source)).await.unwrap();
+    let clone_source = source.clone();
+    let base = server(Arc::new(move |_, _| (200, json!({"http_url_to_repo":clone_source})))).await;
+    let data = root.path().join("data");
+    Storage::new(&data).save(&json!({"prefs":{},"tasks":[{"id":"bug-1","product":"P","run":empty_run()}]})).unwrap();
+    let rt = Runtime::new(data, Arc::new(|_, _| {})).unwrap();
+    let config = json!({"gitlab":{"baseUrl":base,"token":"fixture"},"codex":{"cliPath":"missing-codex-fixture"},"mappings":[{"product":"P","repo":"team/app","branch":"develop"}]});
+    rt.call("start", json!({"id":"bug-1","config":config})).await.unwrap();
+    let mut worktree = String::new();
+    for _ in 0..500 {
+        let state = rt.data.lock().await.clone();
+        if let Some(path) = state["tasks"][0]["run"]["worktree"].as_str() { worktree = path.into(); break; }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    assert!(!worktree.is_empty(), "clone must succeed before the intentionally missing CLI fails");
+    let path = std::path::Path::new(&worktree);
+    assert_ne!(path, source);
+    assert_eq!(std::fs::read_to_string(path.join("selected.txt")).unwrap(), "target branch");
+    assert!(path.join(".git").is_dir(), "execution has an independent clone");
+    assert!(command("git", &["branch", "--show-current"], Some(path)).await.unwrap().starts_with("zencode/"));
+    rt.shutdown().await;
 }

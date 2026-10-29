@@ -152,7 +152,6 @@ export interface RepoMapping {
   id: string;
   product: string;
   repo: string; // GitLab: group/project
-  localPath: string;
   branch: string;
   testCmd: string;
 }

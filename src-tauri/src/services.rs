@@ -238,6 +238,16 @@ impl Api {
         }
         Ok(bytes)
     }
+    pub async fn gitlab_pages(&self, route: &str) -> Result<Vec<Value>> {
+        let mut rows = Vec::new();
+        for page in 1..=100 {
+            let data = self.request(&format!("{route}{}per_page=100&page={page}", if route.contains('?') { '&' } else { '?' }), "GET", None).await?;
+            let items = data.as_array().ok_or("GitLab 列表响应无效")?;
+            rows.extend(items.iter().cloned());
+            if items.len() < 100 { return Ok(rows); }
+        }
+        Err("GitLab 列表超过 100 页".into())
+    }
     pub async fn pages(&self, route: &str, key: &str) -> Result<Vec<Value>> {
         let mut rows = vec![];
         for page in 1..=100 {
@@ -384,9 +394,12 @@ pub async fn sync(config: &Value) -> Result<(Vec<Value>, Vec<String>)> {
             continue;
         }
         for (kind, plural) in [("bug", "bugs"), ("story", "stories")] {
-            let rows = api
-                .pages(&format!("/products/{}/{plural}", product["id"]), plural)
-                .await?;
+            let mut route = format!("/products/{}/{plural}", product["id"]);
+            if kind == "story" {
+                // Include stories in every ZenTao product branch of this mapped product.
+                route.push_str("?branch=all");
+            }
+            let rows = api.pages(&route, plural).await?;
             for row in rows {
                 let assignee = row["assignedTo"]["account"]
                     .as_str()
