@@ -68,7 +68,10 @@ jobs:
           private = bool(os.environ.get('UPDATER_PRIVATE_KEY', '').strip())
           assert public == private, 'Configure both updater public and private keys'
           assert public or not os.environ['GITHUB_REF'].startswith('refs/tags/'), 'Release builds require updater signing keys'
-          Path('updater-build.json').write_text(json.dumps({'bundle': {'createUpdaterArtifacts': public and private}}))
+          Path('updater-build.json').write_text(json.dumps({
+              'bundle': {'createUpdaterArtifacts': public and private},
+              'plugins': {'updater': {'pubkey': os.environ.get('UPDATER_PUBLIC_KEY', '').strip()}}
+          }))
       - run: npm run package -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --config updater-build.json
         env:
           ZENCODE_UPDATER_PUBLIC_KEY: ${{ vars.ZENCODE_UPDATER_PUBLIC_KEY }}

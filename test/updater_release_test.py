@@ -8,6 +8,11 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 class UpdaterReleaseTests(unittest.TestCase):
+    def test_ci_passes_public_key_to_bundler_and_runtime(self):
+        workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/desktop.yml').read_text(encoding='utf-8')
+        self.assertIn("'plugins': {'updater': {'pubkey': os.environ.get('UPDATER_PUBLIC_KEY', '').strip()}}", workflow)
+        self.assertIn('ZENCODE_UPDATER_PUBLIC_KEY: ${{ vars.ZENCODE_UPDATER_PUBLIC_KEY }}', workflow)
+
     def test_manifest_platforms_channels_and_signatures(self):
         for version in ['0.2.0', '0.3.0-beta.1']:
             with tempfile.TemporaryDirectory() as directory:
