@@ -137,6 +137,9 @@ export function ZentaoForm({ value, onChange, test, onTest, onDemo }: { value: Z
         )}
       </Field>
       <AutoSync value={value.syncIntervalMin ?? 5} onChange={(n) => onChange({ syncIntervalMin: n })} />
+      <Field label="同步后自动执行" hint={(value.autoRun ?? true) ? "同步到新任务后会自动交给 Codex，按并发数排队。执行完成后仍要你审核，才会创建 MR。需要先配置该产品的仓库映射。" : "新任务同步进来后保持“待处理”，由你手动交给 Codex。"}>
+        {() => <Toggle checked={value.autoRun ?? true} onChange={(v) => onChange({ autoRun: v })} label="同步后自动执行" />}
+      </Field>
       <AdvancedTls checked={!!value.insecureTls} onChange={(v) => onChange({ insecureTls: v, connected: false })} test={test} />
       <TestBar onRun={onTest} state={test} />
       {onDemo && (

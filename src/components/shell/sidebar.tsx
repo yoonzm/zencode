@@ -178,7 +178,8 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
         <SectionTitle>仓库</SectionTitle>
         <div className="space-y-0.5">
-          {config.mappings.map((m) => {
+          {[...new Set(config.mappings.flatMap((m) => m.repos.map((r) => r.repo)))].map((repo) => {
+            const m = { id: repo, repo };
             const on = filters.repos.length === 1 && filters.repos[0] === m.repo && route.name !== "prefs";
             return (
               <NavItem

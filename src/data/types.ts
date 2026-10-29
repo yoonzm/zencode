@@ -127,6 +127,8 @@ export interface ZentaoConfig {
   scope: "mine" | "products";
   /** 自动同步间隔（分钟，最小 1）；0 表示只手动同步 */
   syncIntervalMin: number;
+  /** 同步到新任务后自动交给 Codex 执行（默认开启，缺省按开启处理） */
+  autoRun?: boolean;
   /** 跳过 TLS 证书验证（仅对这个服务生效） */
   insecureTls?: boolean;
   connected: boolean;
@@ -148,12 +150,18 @@ export interface CodexConfig {
   concurrency: number;
   connected: boolean;
 }
+export interface RepoLink {
+  id: string;
+  repo: string; // GitLab: group/project
+  branch: string; // 目标分支：从它拉代码，MR 也合并到它
+  role: string; // 可选标签：前端 / 后端 / 网关 / 微服务 …
+  testCmd: string;
+}
+/** 一个禅道产品可以对应多个仓库（前后端分离、后端微服务等） */
 export interface RepoMapping {
   id: string;
   product: string;
-  repo: string; // GitLab: group/project
-  branch: string;
-  testCmd: string;
+  repos: RepoLink[];
 }
 export interface AppConfig {
   zentao: ZentaoConfig;
@@ -181,3 +189,5 @@ export const SANDBOX_LABEL: Record<SandboxMode, string> = {
   "workspace-auto": "工作区可写 · 自动执行",
   "full-access": "完全访问",
 };
+
+export interface AiSuggestion { product: string; repo: string; branch: string; role: string; confidence: number; evidence: string[]; }

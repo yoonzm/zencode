@@ -215,7 +215,7 @@ export function TaskListPane({ className }: { className?: string }) {
     { label: "舒适（两行）", icon: Rows, checked: density === "comfortable", onClick: () => store.set({ density: "comfortable" }) },
   ];
 
-  const repoOptions = config.mappings.map((m) => ({ value: m.repo, label: m.repo.split("/")[1] }));
+  const repoOptions = [...new Set(config.mappings.flatMap((m) => m.repos.map((r) => r.repo)))].map((repo) => ({ value: repo, label: repo.split("/").at(-1) || repo }));
 
   let body: any;
   if (status === "loading") body = <ListSkeleton />;

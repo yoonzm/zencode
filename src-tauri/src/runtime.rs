@@ -229,43 +229,16 @@ impl Runtime {
                 let rows = api.gitlab_pages(&format!("/projects/{repo}/repository/branches")).await?;
                 Ok(json!(rows.iter().filter_map(|b| b["name"].as_str()).collect::<Vec<_>>()))
             }
-            "matchRepos" => {
-                let api = services::gitlab(&args["config"]["gitlab"])?;
-                let products = self.data.lock().await["products"]
-                    .as_array()
-                    .cloned()
-                    .unwrap_or_default();
-                let mut matches = Vec::new();
-                for product in products {
-                    let name = product.as_str().unwrap_or("");
-                    let query =
-                        url::form_urlencoded::byte_serialize(name.as_bytes()).collect::<String>();
-                    let candidates = api
-                        .request(
-                            &format!(
-                                "/projects?membership=true&simple=true&per_page=100&search={query}"
-                            ),
-                            "GET",
-                            None,
-                        )
-                        .await?;
-                    let exact = candidates
-                        .as_array()
-                        .ok_or("GitLab 项目响应无效")?
-                        .iter()
-                        .filter(|p| {
-                            text(p, "name").eq_ignore_ascii_case(name)
-                                || text(p, "path").eq_ignore_ascii_case(name)
-                        })
-                        .collect::<Vec<_>>();
-                    if exact.len() == 1 {
-                        let p = exact[0];
-                        matches.push(json!({"id":Uuid::new_v4().to_string(),"product":name,"repo":p["path_with_namespace"],"branch":p["default_branch"].as_str().unwrap_or("main"),"testCmd":""}));
-                    }
+            "matchRepos" => crate::matching::suggest(&args["config"], &self.root).await,
+            "products" => {
+                if args["config"]["zentao"].is_object() {
+                    let api = services::zentao(&args["config"]["zentao"]).await?;
+                    let rows = api.pages("/products", "products").await?;
+                    Ok(json!(rows.iter().map(|p| text(p, "name")).collect::<Vec<_>>()))
+                } else {
+                    Ok(self.data.lock().await["products"].clone())
                 }
-                Ok(json!(matches))
             }
-            "products" => Ok(self.data.lock().await["products"].clone()),
             "test" => {
                 let c = &args["config"];
                 match text(&args, "kind") {
@@ -317,12 +290,19 @@ impl Runtime {
                 let result = services::sync(&args["config"]).await;
                 self.syncing.store(false, Ordering::SeqCst);
                 let (mut tasks, products) = result?;
+                let mut fresh = Vec::new();
                 {
                     let mut data = self.data.lock().await;
                     let old = data["tasks"].as_array().cloned().unwrap_or_default();
                     for t in &mut tasks {
-                        if let Some(previous) = old.iter().find(|p| p["id"] == t["id"]) {
+                        if let Some(previous) = old.iter().find(|p| p["id"] == t["id"] || (p["kind"] == t["kind"] && p["no"] == t["no"] && p["repoId"] == t["repoId"])) {
+                            t["id"] = previous["id"].clone();
                             t["run"] = previous["run"].clone();
+                        } else if args["config"]["zentao"]["autoRun"].as_bool().unwrap_or(true)
+                            && args["config"]["mappings"].as_array().is_some_and(|ms|
+                                ms.iter().any(|m| m["product"] == t["product"]))
+                        {
+                            fresh.push(text(t, "id").to_owned());
                         }
                     }
                     for previous in old {
@@ -336,7 +316,15 @@ impl Runtime {
                     data["products"] = json!(products);
                 }
                 self.persist().await?;
-                Ok(json!(tasks))
+                for id in fresh {
+                    if let Err(e) = self.enqueue(&id, args["config"].clone(), String::new()).await {
+                        self.update(&id, |t| {
+                            t["run"]["state"] = json!("failed");
+                            push_event(t, json!({"kind":"error","text":e}));
+                        }).await?;
+                    }
+                }
+                Ok(self.data.lock().await["tasks"].clone())
             }
             "delete" => {
                 let id = text(&args, "id");
@@ -464,6 +452,11 @@ impl Runtime {
         let mapping = config["mappings"]
             .as_array()
             .and_then(|ms| ms.iter().find(|m| m["product"] == t["product"]))
+            .and_then(|m| {
+                if let Some(repos) = m["repos"].as_array() {
+                    repos.iter().find(|r| r["repo"] == t["repoId"])
+                } else { Some(m) }
+            })
             .cloned()
             .ok_or("请先配置此产品的仓库映射")?;
         let job = Arc::new(Job::new());
@@ -528,7 +521,7 @@ impl Runtime {
             let remote = text(&project, "ssh_url_to_repo");
             let remote = if remote.is_empty() { text(&project, "http_url_to_repo") } else { remote };
             if remote.is_empty() || remote.starts_with('-') { return Err("GitLab 项目没有有效的克隆地址".into()); }
-            let suffix = format!("{}-{}", id, &Uuid::new_v4().to_string()[..8]);
+            let suffix = format!("{}-{}-{}", text(&t, "kind"), t["no"].as_u64().unwrap_or(0), &Uuid::new_v4().to_string()[..8]);
             let branch = format!("zencode/{suffix}");
             let worktree = self.root.join("worktrees").join(&suffix);
             std::fs::create_dir_all(worktree.parent().unwrap()).map_err(|e| e.to_string())?;
@@ -900,6 +893,56 @@ pub fn validate_remote(remote: &str, project: &Value) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn sync_auto_run_defaults_on_and_only_queues_new_tasks() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            loop {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut buf = vec![0; 8192];
+                let n = socket.read(&mut buf).await.unwrap();
+                let request = String::from_utf8_lossy(&buf[..n]);
+                assert!(request.starts_with("GET "));
+                let route = request.split_whitespace().nth(1).unwrap();
+                let body = if route.starts_with("/api.php/v1/products?") {
+                    json!({"products":[{"id":1,"name":"P"}]})
+                } else if route.contains("/products/1/bugs?") {
+                    json!({"bugs":[{"id":1},{"id":2}]})
+                } else if route.contains("/products/1/stories?") {
+                    json!({"stories":[]})
+                } else {
+                    json!({"id":route.rsplit('/').next().unwrap().parse::<u64>().unwrap(),"title":"Task","status":"active"})
+                }.to_string();
+                socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+            }
+        });
+        for enabled in [None, Some(true), Some(false)] {
+            let root = tempfile::tempdir().unwrap();
+            Storage::new(root.path()).save(&json!({"prefs":{},"tasks":[{
+                "id":"bug-1","product":"P","run":services::empty_run()
+            }]})).unwrap();
+            let rt = Runtime::new(root.path().into(), Arc::new(|_, _| {})).unwrap();
+            // Occupy the execution slot so assertions exercise the real queue without launching Codex.
+            let permit = rt.slots.clone().acquire_owned().await.unwrap();
+            let mut config = json!({"zentao":{"baseUrl":base,"auth":"token","secret":"fixture","scope":"products"},"mappings":[{"product":"P"}]});
+            if let Some(value) = enabled { config["zentao"]["autoRun"] = json!(value); }
+            for _ in 0..2 {
+                let tasks = rt.call("sync", json!({"config":config})).await.unwrap();
+                assert_eq!(tasks.as_array().unwrap().len(), 2);
+                assert_eq!(rt.task("bug-1").await.unwrap()["run"]["state"], "idle");
+                assert_eq!(rt.task("bug-2").await.unwrap()["run"]["state"], if enabled == Some(false) { "idle" } else { "queued" });
+                assert_eq!(rt.jobs.lock().await.len(), if enabled == Some(false) { 0 } else { 1 });
+            }
+            rt.call("delete", json!({"id":"bug-2"})).await.unwrap();
+            rt.call("sync", json!({"config":config})).await.unwrap();
+            assert_eq!(rt.task("bug-2").await.unwrap()["run"]["state"], if enabled == Some(false) { "idle" } else { "queued" });
+            rt.call("delete", json!({"id":"bug-2"})).await.unwrap();
+            drop(permit);
+        }
+        server.abort();
+    }
     #[tokio::test]
     async fn delete_cancels_queued_worker_and_persists_removal() {
         let root = tempfile::tempdir().unwrap();

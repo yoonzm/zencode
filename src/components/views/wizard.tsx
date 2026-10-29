@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { DotPattern } from "@/components/magic/effects";
 import { CodexForm, GitlabForm, ZentaoForm } from "@/components/forms/config-forms";
 import { useConnTest } from "@/components/forms/conn-test";
-import { RepoMappingEditor, mappingErrors, mappingsValid } from "@/components/forms/repo-mapping";
+import { RepoMappingEditor, mappingHasError, mappingsValid } from "@/components/forms/repo-mapping";
 
 const STEPS = [
   { id: "welcome", title: "欢迎", desc: "了解 ZenCode 怎么工作" },
@@ -25,10 +25,10 @@ const STEPS = [
 ] as const;
 
 const BLANK: AppConfig = {
-  zentao: { baseUrl: "", edition: "biz", auth: "token", account: "", secret: "", scope: "mine", syncIntervalMin: 5, connected: false },
+  zentao: { baseUrl: "", edition: "biz", auth: "token", account: "", secret: "", scope: "mine", syncIntervalMin: 5, autoRun: true, connected: false },
   gitlab: { baseUrl: "", token: "", targetBranch: "main", mrDraft: true, connected: false },
   codex: { cliPath: "", model: "Codex · 标准", sandbox: "workspace-write", concurrency: 3, connected: false },
-  mappings: [{ id: "w1", product: "企业管理后台", repo: "", branch: "", testCmd: "" }],
+  mappings: [{ id: "w1", product: "", repos: [{ id: "w1a", repo: "", branch: "", role: "", testCmd: "" }] }],
 };
 
 export function Wizard() {
@@ -43,7 +43,7 @@ export function Wizard() {
   const step = STEPS[i];
   const patch = <K extends keyof AppConfig>(k: K, p: Partial<AppConfig[K]>) => setDraft((d) => ({ ...d, [k]: { ...(d[k] as object), ...p } }));
   const mapOk = mappingsValid(draft.mappings);
-  const invalidCount = draft.mappings.filter((m) => Object.values(mappingErrors(m)).some(Boolean)).length;
+  const invalidCount = draft.mappings.filter(mappingHasError).length;
 
   const go = (n: number) => {
     setI(Math.max(0, Math.min(STEPS.length - 1, n)));
@@ -152,7 +152,7 @@ export function Wizard() {
                 <ul className="mt-8 space-y-4">
                   {[
                     ["先连接三样东西", "禅道提供任务，GitLab 接收代码，Codex 负责执行。"],
-                    ["告诉它代码在哪", "把每个禅道产品对应到一个 GitLab 仓库和分支，每次新执行都会重新拉取代码。"],
+                    ["告诉它代码在哪", "把每个禅道产品对应到一个或多个 GitLab 仓库和分支，各仓库独立执行与审核。"],
                     ["你始终握有方向盘", "可以随时暂停、追加指令，越界的命令会先问你。"],
                   ].map(([t, d], k) => (
                     <li key={t} className="flex gap-3">

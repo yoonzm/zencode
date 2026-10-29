@@ -41,7 +41,7 @@ async fn deleted_task_syncs_back_with_fresh_run_without_remote_writes() {
     rt.call("delete", json!({"id":"bug-7"})).await.unwrap();
     assert!(Storage::new(dir.path()).load().unwrap()["tasks"].as_array().unwrap().is_empty());
     let tasks = rt.call("sync", json!({"config":{
-        "zentao":{"baseUrl":base,"auth":"token","secret":"test-token","account":"alice","scope":"mine"},
+        "zentao":{"baseUrl":base,"auth":"token","secret":"test-token","account":"alice","scope":"mine","autoRun":false},
         "mappings":[{"product":"P","repo":"team/app"}]
     }})).await.unwrap();
     assert_eq!(tasks.as_array().unwrap().len(), 1);
@@ -84,6 +84,40 @@ async fn sync_uses_token_and_filters_real_assignee() {
     assert_eq!(tasks[0]["attachments"][0]["id"], 22);
     assert_eq!(products, vec!["P"]);
     assert!(!calls.lock().unwrap().iter().any(|p| p.ends_with("/8")));
+}
+
+#[tokio::test]
+async fn multi_repo_sync_preserves_legacy_runs_and_stable_repo_identity() {
+    use zencode_core::{runtime::Runtime, services::empty_run, storage::Storage};
+    let base = server(Arc::new(|route, request| {
+        assert!(request.starts_with("GET "));
+        if route.starts_with("/api.php/v1/products?") { (200, json!({"products":[{"id":1,"name":"P"}]})) }
+        else if route.starts_with("/api.php/v1/products/1/bugs?") { (200, json!({"bugs":[{"id":7}]})) }
+        else if route.starts_with("/api.php/v1/products/1/stories?") { (200, json!({"stories":[]})) }
+        else if route == "/api.php/v1/bugs/7" { (200, json!({"id":7,"title":"Shared task"})) }
+        else { (404, json!({})) }
+    })).await;
+    let root = tempfile::tempdir().unwrap();
+    let mut run = empty_run();
+    run["state"] = json!("done");
+    run["threadId"] = json!("keep-thread");
+    Storage::new(root.path()).save(&json!({"prefs":{},"tasks":[{"id":"bug-7","kind":"bug","no":7,"repoId":"team/web","run":run}]})).unwrap();
+    let rt = Runtime::new(root.path().into(), Arc::new(|_, _| {})).unwrap();
+    let mut config = json!({"zentao":{"baseUrl":base,"auth":"token","secret":"fixture","autoRun":false},"mappings":[{"product":"P","repos":[{"repo":"team/web","branch":"main"},{"repo":"team/api","branch":"develop"}]}]});
+    let first = rt.call("sync", json!({"config":config})).await.unwrap();
+    assert_eq!(first.as_array().unwrap().len(), 2);
+    assert_eq!(first[0]["id"], "bug-7");
+    assert_eq!(first[0]["run"]["threadId"], "keep-thread");
+    assert_eq!(first[1]["run"]["state"], "idle");
+    config["mappings"][0]["repos"].as_array_mut().unwrap().reverse();
+    let second = rt.call("sync", json!({"config":config})).await.unwrap();
+    assert_eq!(second[0]["id"], first[1]["id"]);
+    assert_eq!(second[1]["id"], first[0]["id"]);
+    assert_eq!(second[1]["run"]["threadId"], "keep-thread");
+    rt.call("delete", json!({"id":first[1]["id"]})).await.unwrap();
+    let third = rt.call("sync", json!({"config":config})).await.unwrap();
+    assert_eq!(third[0]["run"]["state"], "idle");
+    assert_eq!(third[1]["run"]["threadId"], "keep-thread");
 }
 #[tokio::test]
 async fn sync_always_limits_products_and_applies_assignee_scope() {
@@ -349,9 +383,9 @@ async fn execution_clones_target_branch_without_local_mapping() {
     let clone_source = source.clone();
     let base = server(Arc::new(move |_, _| (200, json!({"http_url_to_repo":clone_source})))).await;
     let data = root.path().join("data");
-    Storage::new(&data).save(&json!({"prefs":{},"tasks":[{"id":"bug-1","product":"P","run":empty_run()}]})).unwrap();
+    Storage::new(&data).save(&json!({"prefs":{},"tasks":[{"id":"bug-1","product":"P","repoId":"team/app","run":empty_run()}]})).unwrap();
     let rt = Runtime::new(data, Arc::new(|_, _| {})).unwrap();
-    let config = json!({"gitlab":{"baseUrl":base,"token":"fixture"},"codex":{"cliPath":"missing-codex-fixture"},"mappings":[{"product":"P","repo":"team/app","branch":"develop"}]});
+    let config = json!({"gitlab":{"baseUrl":base,"token":"fixture"},"codex":{"cliPath":"missing-codex-fixture"},"mappings":[{"product":"P","repos":[{"repo":"team/other","branch":"missing"},{"repo":"team/app","branch":"develop"}]}]});
     rt.call("start", json!({"id":"bug-1","config":config})).await.unwrap();
     let mut worktree = String::new();
     for _ in 0..500 {

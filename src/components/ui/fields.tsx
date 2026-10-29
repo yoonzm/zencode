@@ -7,6 +7,9 @@ import { Switch } from "./primitives/switch";
 import { Checkbox as ShadCheckbox } from "./primitives/checkbox";
 import { Select as ShadSelect, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./primitives/select";
 import { ToggleGroup, ToggleGroupItem } from "./primitives/toggle-group";
+import { Popover, PopoverContent, PopoverTrigger } from "./primitives/popover";
+import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "./primitives/command";
+import { Check, ChevronDown, RefreshCw } from "@/lib/icons";
 
 type InputProps = Omit<React.ComponentProps<"input">, "ref"> & { invalid?: boolean };
 
@@ -127,5 +130,67 @@ export function Checkbox({ checked, onChange, label, className }: { checked: boo
       <ShadCheckbox checked={checked} onCheckedChange={(v) => onChange(v === true)} className="data-[state=checked]:border-accent data-[state=checked]:bg-accent data-[state=checked]:text-accent-foreground" />
       {label}
     </label>
+  );
+}
+
+/** 可搜索的下拉：选项很多时用它代替 Select。onRefresh 存在时，列表底部和“没有匹配项”处会给出刷新入口。 */
+export function Combobox<T extends string>({ value, onChange, options, id, placeholder = "请选择", searchPlaceholder = "搜索…", invalid, disabled, onRefresh, refreshing, className }: {
+  value: T | "";
+  onChange: (v: T) => void;
+  options: Opt<T>[];
+  id?: string;
+  placeholder?: string;
+  searchPlaceholder?: string;
+  invalid?: boolean;
+  disabled?: boolean;
+  onRefresh?: () => void;
+  refreshing?: boolean;
+  className?: string;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const cur = options.find((o) => o.value === value);
+  const refresh = onRefresh && (
+    <button type="button" onClick={onRefresh} disabled={refreshing} className="inline-flex items-center gap-1 rounded-sm text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/60 disabled:opacity-60">
+      <RefreshCw className={cn("size-3", refreshing && "animate-spin")} />{refreshing ? "正在刷新…" : "刷新列表"}
+    </button>
+  );
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          id={id}
+          type="button"
+          role="combobox"
+          aria-expanded={open}
+          aria-invalid={invalid || undefined}
+          disabled={disabled}
+          className={cn("flex h-8 w-full items-center justify-between gap-2 rounded-md border border-border-strong bg-card px-2.5 text-left text-sm font-normal shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-danger", className)}
+        >
+          <span className={cn("min-w-0 truncate", !cur && "text-muted-foreground")}>{cur?.label ?? placeholder}</span>
+          <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" sideOffset={4} className="w-(--radix-popover-trigger-width) min-w-56 overflow-hidden p-0 shadow-pop">
+        <Command>
+          <CommandInput placeholder={searchPlaceholder} />
+          <CommandList className="max-h-60">
+            <CommandEmpty className="px-3 py-4 text-center text-xs text-muted-foreground">
+              <div>没有匹配项</div>
+              {refresh && <div className="mt-1.5">找不到想要的？{refresh}</div>}
+            </CommandEmpty>
+            {options.map((o) => (
+              <CommandItem key={o.value} value={`${o.label} ${o.hint ?? ""}`} onSelect={() => { onChange(o.value); setOpen(false); }} className="py-1.5">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{o.label}</span>
+                  {o.hint && <span className="block truncate text-xs text-muted-foreground">{o.hint}</span>}
+                </span>
+                {o.value === value && <Check className="size-4 text-foreground" />}
+              </CommandItem>
+            ))}
+          </CommandList>
+          {refresh && <div className="flex items-center justify-between border-t border-border px-2.5 py-1.5 text-xs text-muted-foreground"><span>{options.length} 项</span>{refresh}</div>}
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }

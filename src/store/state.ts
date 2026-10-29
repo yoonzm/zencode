@@ -122,7 +122,7 @@ export async function hydrate() {
   // Only supported preferences are restored; obsolete prototype platform overrides are ignored.
   const prefs = Object.fromEntries(PERSIST_KEYS.filter(k => k in (data.prefs ?? {})).map(k => [k, data.prefs[k]]));
   const config = prefs.config ?? defaultPrefs.config;
-  prefs.config = { ...config, zentao: { ...config.zentao, syncIntervalMin: config.zentao?.syncIntervalMin ?? 5 } };
+  prefs.config = { ...config, mappings: (config.mappings ?? []).map((m: any) => m.repos ? m : ({ id: m.id, product: m.product, repos: [{ id: `${m.id}-repo`, repo: m.repo ?? "", branch: m.branch ?? "", role: "", testCmd: m.testCmd ?? "" }] })), zentao: { ...config.zentao, syncIntervalMin: config.zentao?.syncIntervalMin ?? 5, autoRun: config.zentao?.autoRun ?? true } };
   const platform: Platform = data.platform === "mac" || data.platform === "win" ? data.platform : detectPlatform();
   store.set({ ...prefs, platform, tasks: data.tasks, listStatus: data.tasks.length ? "ready" : "empty", syncError: undefined });
   applyTheme(store.get().theme); applyPlatform(platform);

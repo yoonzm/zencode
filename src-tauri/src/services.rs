@@ -390,7 +390,7 @@ pub async fn sync(config: &Value) -> Result<(Vec<Value>, Vec<String>)> {
             .and_then(|ms| ms.iter().find(|m| m["product"] == product["name"]))
             .cloned()
             .unwrap_or(Value::Null);
-        if mapping.is_null() {
+        if mapping.is_null() || mapping["repos"].as_array().is_some_and(|rs| rs.is_empty()) {
             continue;
         }
         for (kind, plural) in [("bug", "bugs"), ("story", "stories")] {
@@ -417,13 +417,19 @@ pub async fn sync(config: &Value) -> Result<(Vec<Value>, Vec<String>)> {
                 if let (Some(a), Some(b)) = (merged.as_object_mut(), detail.as_object()) {
                     a.extend(b.clone());
                 }
-                tasks.push(task(
-                    &merged,
-                    kind,
-                    product,
-                    &mapping,
-                    text(&config["zentao"], "account"),
-                )?);
+                let links = mapping["repos"].as_array().cloned().unwrap_or_else(|| vec![mapping.clone()]);
+                let mut seen = std::collections::HashSet::new();
+                for link in links {
+                    if !seen.insert(text(&link, "repo").to_owned()) { continue; }
+                    let mut task = task(&merged, kind, product, &link, text(&config["zentao"], "account"))?;
+                    if mapping["repos"].is_array() {
+                        if text(&link, "repo").is_empty() { continue; }
+                        // Hex encoding is stable across reorder/removal and safe in checkout paths.
+                        let suffix: String = text(&link, "repo").bytes().map(|b| format!("{b:02x}")).collect();
+                        task["id"] = json!(format!("{}-{}", text(&task, "id"), suffix));
+                    }
+                    tasks.push(task);
+                }
             }
         }
     }
