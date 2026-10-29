@@ -124,7 +124,7 @@ export function AiMatchDialog({ open, onClose, value, onApply, config }: { confi
               </ul>
             </section>
           ))}
-          <p className="text-xs leading-5 text-subtle-foreground">低置信度的建议默认不勾选。应用后可以在映射里继续修改分支、标签和测试命令。</p>
+          <p className="text-xs leading-5 text-subtle-foreground">低置信度的建议默认不勾选。应用后可以在映射里继续修改分支。</p>
         </div>
       )}
     </Modal>

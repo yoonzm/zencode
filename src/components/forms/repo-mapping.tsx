@@ -3,7 +3,9 @@ import { Plus, Trash, FolderGit, RefreshCw, Sparkles, X } from "@/lib/icons";
 import type { AppConfig, AiSuggestion, RepoLink, RepoMapping } from "@/data/types";
 import { desktopCall } from "@/lib/desktop";
 import { Button } from "@/components/ui/button";
-import { Combobox, Input } from "@/components/ui/fields";
+import { Combobox, Toggle } from "@/components/ui/fields";
+import { verifyOf } from "@/data/verify";
+import type { VerifyConfig } from "@/data/types";
 import { Tip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/ui/empty";
 import { uid } from "@/lib/utils";
@@ -32,7 +34,6 @@ export const mappingHasError = (m: RepoMapping) => {
 export const mappingsValid = (list: RepoMapping[]) => list.length > 0 && list.every((m) => !mappingHasError(m));
 
 const newLink = (): RepoLink => ({ id: uid("r"), repo: "", branch: "", role: "", testCmd: "" });
-const ROLES = ["前端", "后端", "网关", "微服务", "移动端", "公共库"];
 
 function Label({ children, error }: { children: React.ReactNode; error?: string }) {
   return (
@@ -40,6 +41,35 @@ function Label({ children, error }: { children: React.ReactNode; error?: string 
       {children}
       {error && <span className="font-normal text-danger" role="alert">{error}</span>}
     </label>
+  );
+}
+
+function VerifySection({ m, onChange }: { m: RepoMapping; onChange: (v: VerifyConfig) => void }) {
+  const v = verifyOf(m.verify);
+  const set = (p: Partial<VerifyConfig>) => onChange({ ...v, ...p });
+  return (
+    <div className="mt-4 border-t border-border pt-3.5">
+      <div className="flex items-center gap-2">
+        <h4 className="text-sm font-semibold text-foreground">验证</h4>
+        <span className="text-xs text-muted-foreground">改完代码后，AI 按这里的说明跑一遍</span>
+        <span className="ml-auto"><Toggle checked={v.enabled} onChange={(b) => set({ enabled: b })} label="启用验证" /></span>
+      </div>
+      {v.enabled && (
+        <div className="mt-3 space-y-3">
+          <Label>
+            验证说明
+            <textarea
+              value={v.prompt}
+              onChange={(ev) => set({ prompt: ev.target.value })}
+              rows={5}
+              spellCheck={false}
+              placeholder="告诉 AI 怎么验证：在哪里跑（本机或测试环境地址）、怎么启动和登录、重点看什么、用浏览器还是接口。留空则只做代码自检。"
+              className="w-full resize-y rounded-md border border-input bg-background px-2.5 py-2 text-sm leading-[1.6] font-normal text-foreground outline-none placeholder:text-subtle-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
+            />
+          </Label>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -83,7 +113,7 @@ export function RepoMappingEditor({ value, onChange, showErrors, config }: { val
   const updateLink = (mid: string, rid: string, patch: Partial<RepoLink>) => updateMap(mid, (m) => ({ ...m, repos: m.repos.map((r) => (r.id === rid ? { ...r, ...patch } : r)) }));
   const used = new Set(value.map((m) => m.product));
 
-  const addMapping = () => onChange([...value, { id: uid("m"), product: products.find((p) => !used.has(p)) ?? "", repos: [newLink()] }]);
+  const addMapping = () => onChange([...value, { id: uid("m"), product: products.find((p) => !used.has(p)) ?? "", repos: [newLink()], verify: verifyOf() }]);
 
   const applyAi = (picked: AiSuggestion[]) => {
     let next = value.map((m) => ({ ...m, repos: [...m.repos] }));
@@ -100,7 +130,7 @@ export function RepoMappingEditor({ value, onChange, showErrors, config }: { val
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <Button variant="secondary" onClick={() => setAiOpen(true)}><Sparkles />AI 自动匹配</Button>
+        {value.length > 0 && <Button variant="secondary" onClick={() => setAiOpen(true)}><Sparkles />AI 自动匹配</Button>}
         <div className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
           <span>{busy ? "正在从禅道和 GitLab 刷新…" : catalogAt ? `产品、仓库和分支列表 · 刷新于 ${relTime(catalogAt, now)}` : "尚未刷新成功"}</span>
           <Tip label="重新读取产品、仓库和分支">
@@ -150,30 +180,23 @@ export function RepoMappingEditor({ value, onChange, showErrors, config }: { val
                     const repoOpts = repos.map((x) => ({ value: x.path, label: x.path, hint: `默认分支 ${x.defaultBranch}` }));
                     if (r.repo && !findRepo(r.repo)) repoOpts.unshift({ value: r.repo, label: r.repo, hint: "已保存，尚未确认访问权限" });
                     return (
-                      <li key={r.id} className="relative rounded-md bg-muted/50 p-3">
-                        {m.repos.length > 1 && (
-                          <Button variant="ghost" size="icon-xs" className="absolute right-1.5 top-1.5" aria-label={`移除仓库 ${r.repo || ""}`} onClick={() => updateMap(m.id, (x) => ({ ...x, repos: x.repos.filter((y) => y.id !== r.id) }))}>
-                            <X />
-                          </Button>
-                        )}
-                        <div className="grid gap-3 sm:grid-cols-2">
+                      <li key={r.id} className="flex items-start gap-2">
+                        <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
                           <Label error={showErrors ? re?.repo : ""}>
-                            GitLab 仓库
+                            <span className={m.repos.indexOf(r) === 0 ? "" : "sr-only"}>GitLab 仓库</span>
                             <Combobox value={r.repo} onChange={(v: string) => updateLink(m.id, r.id, { repo: v, branch: findRepo(v)?.defaultBranch ?? "" })} options={repoOpts} placeholder="选择仓库" searchPlaceholder="搜索仓库…" invalid={showErrors && !!re?.repo} onRefresh={refreshCatalog} refreshing={busy} />
                           </Label>
                           <Label error={showErrors ? re?.branch : ""}>
-                            目标分支
+                            <span className={m.repos.indexOf(r) === 0 ? "" : "sr-only"}>目标分支</span>
                             <Combobox value={r.branch} onChange={(v: string) => updateLink(m.id, r.id, { branch: v })} options={branchOpts} placeholder={r.repo ? "选择分支" : "先选择仓库"} searchPlaceholder="搜索分支…" disabled={!r.repo} invalid={showErrors && !!re?.branch} onRefresh={refreshCatalog} refreshing={busy} />
                           </Label>
-                          <Label>
-                            标签（可选）
-                            <Input value={r.role} onChange={(ev: any) => updateLink(m.id, r.id, { role: ev.target.value })} placeholder="前端 / 后端 / 微服务" list="repo-roles" maxLength={12} />
-                          </Label>
-                          <Label>
-                            测试命令（可选）
-                            <Input value={r.testCmd} onChange={(ev: any) => updateLink(m.id, r.id, { testCmd: ev.target.value })} placeholder="pnpm test" className="font-mono text-xs" spellCheck={false} />
-                          </Label>
                         </div>
+                        {m.repos.length === 1 && <span className="size-7 shrink-0" aria-hidden />}
+                        {m.repos.length > 1 && (
+                          <Button variant="ghost" size="icon-sm" className={m.repos.indexOf(r) === 0 ? "mt-[1.375rem]" : ""} aria-label={`移除仓库 ${r.repo || ""}`} onClick={() => updateMap(m.id, (x) => ({ ...x, repos: x.repos.filter((y) => y.id !== r.id) }))}>
+                            <X />
+                          </Button>
+                        )}
                       </li>
                     );
                   })}
@@ -182,12 +205,12 @@ export function RepoMappingEditor({ value, onChange, showErrors, config }: { val
                 <Button variant="ghost" size="sm" className="mt-2" onClick={() => updateMap(m.id, (x) => ({ ...x, repos: [...x.repos, newLink()] }))}>
                   <Plus />添加仓库
                 </Button>
+                <VerifySection m={m} onChange={(v) => updateMap(m.id, (x) => ({ ...x, verify: v }))} />
               </li>
             );
           })}
         </ul>
       )}
-      <datalist id="repo-roles">{ROLES.map((r) => <option key={r} value={r} />)}</datalist>
       {value.length > 0 && (
         <Button variant="secondary" onClick={addMapping}><Plus />添加产品</Button>
       )}

@@ -270,6 +270,10 @@ export function CodexForm({ value, onChange, test, onTest, onDemo }: { value: Co
         </Field>
       </div>
 
+      <Field label="验证前确认测试计划" hint={value.confirmPlan ? "改完代码后，AI 会先给出测试计划，等你确认再开始验证。" : "改完代码后自动验证，不用等你确认。"}>
+        {() => <Toggle checked={!!value.confirmPlan} onChange={(v) => onChange({ confirmPlan: v })} label="验证前确认测试计划" />}
+      </Field>
+
       <fieldset>
         <legend className="mb-2 text-sm font-medium text-foreground">沙盒与审批</legend>
         <div role="radiogroup" aria-label="沙盒与审批" className="grid gap-2">

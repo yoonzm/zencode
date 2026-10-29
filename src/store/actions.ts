@@ -152,12 +152,12 @@ export function quoteLine(path: string, line: number, text: string) {
   void text;
 }
 
-export function openTask(id: string, tab?: "run" | "diff" | "zentao") {
+export function openTask(id: string, tab?: "run" | "diff" | "verify" | "zentao") {
   navigate({ name: "task", id });
   if (tab) store.set({ tab });
 }
 
-export function setTab(tab: "run" | "diff" | "zentao") {
+export function setTab(tab: "run" | "diff" | "verify" | "zentao") {
   store.set({ tab });
 }
 
@@ -166,3 +166,6 @@ export function focusDiffFile(taskId: string, path: string) {
 }
 
 export const newId = uid;
+
+export function decideVerify(id: string, go: boolean) { void runCall("verifyDecision", { id, go }); }
+export function reverify(id: string) { void runCall("reverify", { id }); }

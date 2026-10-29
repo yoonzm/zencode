@@ -20,6 +20,7 @@ import { ShimmerText } from "@/components/magic/effects";
 import { Timeline } from "./timeline";
 import { DiffView } from "./diff-view";
 import { ZentaoTab } from "./zentao-tab";
+import { VerifyTab, verdictTone } from "./verify-tab";
 import { Composer } from "./composer";
 import { navigate } from "@/lib/route";
 import { store } from "@/store/state";
@@ -75,7 +76,7 @@ function Actions({ task }: { task: ZTask }) {
         <>
           <Button variant="secondary" disabled><Pause />暂停</Button>
           <Button variant="ghost" onClick={() => stopRun(task.id)}><Square />终止</Button>
-          <span className="inline-flex items-center gap-1.5 text-sm text-warning"><TriangleAlert className="size-4" />有一条命令等你审批</span>
+          <span className="inline-flex items-center gap-1.5 text-sm text-warning"><TriangleAlert className="size-4" />{run.verify?.state === "awaiting-plan" ? "测试计划等你确认" : "有一条命令等你审批"}</span>
         </>
       )}
       {s === "paused" && (
@@ -137,14 +138,15 @@ export function TaskDetail({ id, onBack }: { id: string; onBack?: () => void }) 
     if (task && unread) clearUnread(id);
   }, [id, unread]);
 
-  // 1 / 2 / 3 切换页签
+  // 1 / 2 / 3 / 4 切换页签
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
       if (store.get().paletteOpen || store.get().confirm) return;
       if (e.key === "1") setTab("run");
       else if (e.key === "2") setTab("diff");
-      else if (e.key === "3") setTab("zentao");
+      else if (e.key === "3") setTab("verify");
+      else if (e.key === "4") setTab("zentao");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -241,6 +243,14 @@ export function TaskDetail({ id, onBack }: { id: string; onBack?: () => void }) 
               <span className="rounded-full bg-muted px-1.5 text-[11px] font-medium tabular-nums text-muted-foreground">{run.files.length}</span>
             )}
           </TabButton>
+          <TabButton id="verify" on={tab === "verify"} onClick={() => setTab("verify")}>
+            验证
+            {run.verify && (
+              <span className={cn("text-[11px] font-medium", verdictTone(run.verify.state))}>
+                {run.verify.state === "passed" ? "通过" : run.verify.state === "failed" ? "未通过" : run.verify.state === "unverified" ? "未验证" : "进行中"}
+              </span>
+            )}
+          </TabButton>
           <TabButton id="zentao" on={tab === "zentao"} onClick={() => setTab("zentao")}>禅道原文</TabButton>
           {tab === "diff" && run.files.length > 0 && (
             <span className="ml-auto hidden font-mono text-xs tabular-nums @md:block"><span className="text-success">+{diffAdd}</span> <span className="text-danger">−{diffDel}</span></span>
@@ -261,12 +271,13 @@ export function TaskDetail({ id, onBack }: { id: string; onBack?: () => void }) 
           <>
             {tab === "run" && <Timeline task={task} />}
             {tab === "diff" && <DiffView task={task} />}
+            {tab === "verify" && <VerifyTab task={task} />}
           </>
         )}
         {tab === "zentao" && <ZentaoTab task={task} />}
       </div>
 
-      {tab !== "zentao" && !run.cleaned && <Composer task={task} />}
+      {tab !== "zentao" && tab !== "verify" && !run.cleaned && <Composer task={task} />}
     </article>
   );
 }

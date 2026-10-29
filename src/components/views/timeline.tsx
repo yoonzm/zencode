@@ -308,7 +308,7 @@ export function Timeline({ task }: { task: ZTask }) {
                 {waiting ? <ShieldAlert className="size-3.5 text-warning" /> : <span className="dot-pulse size-2 rounded-full bg-accent" />}
               </span>
               {waiting ? (
-                <span className="text-sm text-warning">等待你审批后继续</span>
+                <span className="text-sm text-warning">{run.verify?.state === "awaiting-plan" ? "等待你确认测试计划" : "等待你审批后继续"}</span>
               ) : run.state === "queued" ? (
                 <ShimmerText className="text-sm">排队中，等待空闲的 Codex 会话…</ShimmerText>
               ) : (

@@ -25,6 +25,8 @@ struct Job {
     paused: AtomicBool,
     cancel_queue: Notify,
     finished: Notify,
+    verify_decision: Mutex<Option<bool>>,
+    verify_ready: Notify,
 }
 impl Job {
     fn new() -> Self {
@@ -36,6 +38,8 @@ impl Job {
             paused: AtomicBool::new(false),
             cancel_queue: Notify::new(),
             finished: Notify::new(),
+            verify_decision: Mutex::new(None),
+            verify_ready: Notify::new(),
         }
     }
 }
@@ -58,6 +62,10 @@ impl Runtime {
                 t["run"]["mrBusy"] = json!(false);
                 if ["running", "queued", "paused", "waiting"].contains(&text(&t["run"], "state")) {
                     t["run"]["state"] = json!("failed");
+                    if t["run"]["verify"].is_object() {
+                        t["run"]["verify"]["state"] = json!("unverified");
+                        t["run"]["verify"]["summary"] = json!("应用退出中断了验证，请重新执行。");
+                    }
                     push_event(
                         t,
                         json!({"kind":"error","text":"上次执行被应用退出中断，工作区已保留，可重试恢复会话。"}),
@@ -142,7 +150,7 @@ impl Runtime {
     }
     pub async fn call(self: &Arc<Self>, op: &str, args: Value) -> Result<Value> {
         // A deletion must not race a sync merge, a new run, or MR submission.
-        let _mutation = if matches!(op, "sync" | "delete" | "start" | "mr" | "cleanup") {
+        let _mutation = if matches!(op, "sync" | "delete" | "start" | "reverify" | "mr" | "cleanup") {
             Some(self.task_mutations.lock().await)
         } else {
             None
@@ -364,6 +372,25 @@ impl Runtime {
                 *data = next;
                 Ok(Value::Null)
             }
+            "verifyDecision" => {
+                let id = text(&args, "id");
+                let job = self.jobs.lock().await.get(id).cloned().ok_or("验证计划已失效，请重新执行")?;
+                let t = self.task(id).await?;
+                if text(&t["run"]["verify"], "state") != "awaiting-plan" { return Err("没有等待确认的计划".into()); }
+                *job.verify_decision.lock().await = Some(args["go"].as_bool().ok_or("无效决定")?);
+                job.verify_ready.notify_one();
+                Ok(Value::Null)
+            }
+            "reverify" => {
+                let id = text(&args, "id");
+                let t = self.task(id).await?;
+                if text(&t["run"], "state") != "review" { return Err("只有待审核任务可以重新验证".into()); }
+                if self.jobs.lock().await.contains_key(id) { return Err("执行正在收尾，请稍后重新验证".into()); }
+                let mut config = args["config"].clone();
+                config["verifyOnly"] = json!(true);
+                self.enqueue(id, config, String::new()).await?;
+                Ok(Value::Null)
+            }
             "start" => {
                 self.enqueue(
                     text(&args, "id"),
@@ -384,6 +411,7 @@ impl Runtime {
                     .ok_or("没有活动执行")?;
                 job.stopped.store(op == "stop", Ordering::SeqCst);
                 job.paused.store(op == "pause", Ordering::SeqCst);
+                job.verify_ready.notify_one();
                 if let Some(session) = job.session.lock().await.clone() {
                     let turn = job.turn.lock().await.clone();
                     if !turn.is_empty() {
@@ -523,6 +551,9 @@ impl Runtime {
     async fn enqueue(self: &Arc<Self>, id: &str, config: Value, instruction: String) -> Result<()> {
         let t = self.task(id).await?;
         if let Some(job) = self.jobs.lock().await.get(id).cloned() {
+            if text(&t["run"]["verify"], "state") == "awaiting-plan" {
+                return Err("请先确认或跳过测试计划".into());
+            }
             let session = job
                 .session
                 .lock()
@@ -555,6 +586,7 @@ impl Runtime {
             t["run"]["startedAt"] = json!(now());
             t["run"]["finishedAt"] = Value::Null;
             t["run"]["model"] = config["codex"]["model"].clone();
+            t["run"]["verify"] = Value::Null;
             if !instruction.is_empty() {
                 push_event(t, json!({"kind":"user","text":instruction}));
             }
@@ -576,6 +608,10 @@ impl Runtime {
                 let _ = rt
                     .update(&id, |t| {
                         t["run"]["state"] = json!(if paused { "paused" } else { "failed" });
+                        if t["run"]["verify"].is_object() {
+                            t["run"]["verify"]["state"] = json!("unverified");
+                            t["run"]["verify"]["summary"] = json!(e);
+                        }
                         push_event(t, json!({"kind":if paused{"system"}else{"error"},"text":e}));
                     })
                     .await;
@@ -663,7 +699,7 @@ impl Runtime {
         let thread = response["thread"]["id"].clone();
         self.update(id, |t| t["run"]["threadId"] = thread.clone())
             .await?;
-        let prompt = if resume {
+        let mut prompt = if resume {
             if instruction.is_empty() {
                 "继续完成任务，保留已有改动并运行适当测试。".into()
             } else {
@@ -684,6 +720,19 @@ impl Runtime {
                 }
             )
         };
+        let verify_config = crate::verification::config(config, &t);
+        let instructions = text(verify_config, "prompt");
+        let enabled = verify_config["enabled"].as_bool() != Some(false) && !instructions.trim().is_empty();
+        let mut phase = if config["verifyOnly"].as_bool() == Some(true) { "planning" } else { "code" };
+        if phase == "planning" {
+            if !enabled { return Err("请先启用产品验证并填写验证说明".into()); }
+            prompt = crate::verification::prompt(phase, instructions, &Value::Null);
+            self.update(id, |t| t["run"]["verify"] = crate::verification::empty("planning", "正在制定测试计划")).await?;
+        } else if enabled {
+            prompt.push_str("\n完成代码修改与代码自检后结束本轮。产品端到端验证由后续独立阶段执行。");
+        }
+        let mut response_text = String::new();
+        let mut verify_logs = Vec::new();
         let effort = match text(&config["codex"], "model") {
             "Codex · 高推理" => "high",
             "Codex · 快速" => "low",
@@ -733,7 +782,53 @@ impl Runtime {
                             .unwrap_or("执行已中断，工作区保留")
                             .into());
                     }
-                    break;
+                    if job.stopped.load(Ordering::SeqCst) || job.paused.load(Ordering::SeqCst) { return Err("验证已中断，工作区保留".into()); }
+                    if phase == "code" && !enabled {
+                        self.update(id, |t| t["run"]["verify"] = crate::verification::empty("unverified", "产品验证已关闭或未填写验证说明；代码自检见执行过程。")).await?;
+                        break;
+                    }
+                    if phase == "running" {
+                        let report = crate::verification::report(&response_text, false, json!(verify_logs));
+                        self.update(id, |t| t["run"]["verify"] = report).await?;
+                        break;
+                    }
+                    if phase == "planning" {
+                        let report = crate::verification::report(&response_text, true, json!(verify_logs));
+                        let valid = text(&report, "state") == "awaiting-plan";
+                        self.update(id, |t| t["run"]["verify"] = report.clone()).await?;
+                        if !valid { break; }
+                        if config["codex"]["confirmPlan"].as_bool() == Some(true) {
+                            *job.turn.lock().await = String::new();
+                            self.update(id, |t| t["run"]["state"] = json!("waiting")).await?;
+                            tokio::select! {
+                                _ = job.verify_ready.notified() => {},
+                                _ = job.cancel_queue.notified() => {},
+                            }
+                            if job.stopped.load(Ordering::SeqCst) || job.paused.load(Ordering::SeqCst) { return Err("验证已中断，工作区保留".into()); }
+                            if job.verify_decision.lock().await.take() != Some(true) {
+                                self.update(id, |t| {
+                                    t["run"]["verify"]["state"] = json!("unverified");
+                                    t["run"]["verify"]["summary"] = json!("用户跳过验证。");
+                                }).await?;
+                                break;
+                            }
+                        }
+                        phase = "running";
+                        prompt = crate::verification::prompt(phase, instructions, &report);
+                        self.update(id, |t| {
+                            t["run"]["state"] = json!("running");
+                            t["run"]["verify"]["state"] = json!("running");
+                        }).await?;
+                    } else {
+                        phase = "planning";
+                        prompt = crate::verification::prompt(phase, instructions, &Value::Null);
+                        self.update(id, |t| t["run"]["verify"] = crate::verification::empty("planning", "正在制定测试计划")).await?;
+                    }
+                    response_text.clear();
+                    let turn = session.request("turn/start", json!({"threadId":thread,"effort":effort,"input":[{"type":"text","text":prompt,"text_elements":[]}]})).await?;
+                    *job.turn.lock().await = text(&turn["turn"], "id").into();
+                    if job.stopped.load(Ordering::SeqCst) || job.paused.load(Ordering::SeqCst) { return Err("验证已中断，工作区保留".into()); }
+                    continue;
                 }
                 "item/started" => {
                     let item = &p["item"];
@@ -761,8 +856,13 @@ impl Runtime {
                 "item/completed" => {
                     let i = &p["item"];
                     if text(i, "type") == "commandExecution" {
+                        if phase != "code" {
+                            verify_logs.push(json!({"kind":"cli","level":if i["exitCode"].as_i64()==Some(0) {"info"} else {"error"},"text":format!("{}\n{}", text(i,"command"),text(i,"aggregatedOutput"))}));
+                            self.update(id, |t| t["run"]["verify"]["logs"] = json!(verify_logs)).await?;
+                        }
                         self.event(id,json!({"kind":"command","cmd":i["command"],"output":i["aggregatedOutput"],"exit":i["exitCode"].as_i64().unwrap_or(-1),"ms":i["durationMs"].as_u64().unwrap_or(0)})).await?;
                     } else if text(i, "type") == "agentMessage" {
+                        response_text = text(i, "text").to_owned();
                         let event = format!("message-{}", text(i, "id"));
                         self.update(id, |t| {
                             if !t["run"]["events"]
@@ -907,7 +1007,7 @@ impl Runtime {
             let mr = if let Some(mr) = existing.as_array().and_then(|ms| ms.first()) {
                 mr.clone()
             } else {
-                api.request(&route,"POST",Some(json!({"source_branch":run["branch"],"target_branch":m["branch"],"title":format!("{}{}",if config["gitlab"]["mrDraft"].as_bool()==Some(true){"Draft: "}else{""},text(&t,"title")),"description":format!("{} #{}\n{}",text(&t,"kind"),t["no"],text(&config["zentao"],"baseUrl"))}))).await?
+                api.request(&route,"POST",Some(json!({"source_branch":run["branch"],"target_branch":m["branch"],"title":format!("{}{}",if config["gitlab"]["mrDraft"].as_bool()==Some(true) || text(&run["verify"], "state") != "passed" {"Draft: "}else{""},text(&t,"title")),"description":format!("{} #{}\n{}{}",text(&t,"kind"),t["no"],text(&config["zentao"],"baseUrl"),crate::verification::mr_note(run))}))).await?
             };
             if mr["iid"].as_u64().is_none() || url::Url::parse(text(&mr, "web_url")).is_err() {
                 return Err("GitLab 返回无效 MR 信息，未标记提交成功".into());
@@ -926,6 +1026,9 @@ impl Runtime {
     }
     pub async fn shutdown(&self) {
         for job in self.jobs.lock().await.values() {
+            job.stopped.store(true, Ordering::SeqCst);
+            job.verify_ready.notify_one();
+            job.cancel_queue.notify_one();
             if let Some(session) = job.session.lock().await.as_ref() {
                 session.close().await;
             }

@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { Command as Cmdk } from "cmdk";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/primitives/dialog";
 import { cn } from "@/lib/utils";
-import { ArrowRight, Bug, Command as CommandIcon, CornerDownLeft, GitBranch, GitPullRequest, Inbox, Keyboard, ListFilter, Monitor, Moon, PanelLeft, Pause, Play, RefreshCw, RotateCcw, Rocket, Search, Settings, Sun, Eye, Code, Lightbulb, User, Sparkles, Loader } from "@/lib/icons";
+import { ArrowRight, Bug, Command as CommandIcon, CornerDownLeft, GitBranch, GitPullRequest, Inbox, Keyboard, ListFilter, Monitor, Moon, PanelLeft, Pause, Play, RefreshCw, RotateCcw, Rocket, Search, Settings, Sun, Eye, Code, Lightbulb, User, Sparkles, Loader, ShieldCheck } from "@/lib/icons";
 import { useApp, store } from "@/store/state";
 import { useRoute, navigate } from "@/lib/route";
 import { fuzzy } from "@/lib/fuzzy";
@@ -81,7 +81,8 @@ export function CommandPalette() {
       list.push({ id: "c-instr", group: "当前任务", title: "追加指令…", hint: label, icon: Sparkles, keywords: "输入 指令 要求", run: done(() => { setTab("run"); setTimeout(() => document.getElementById("composer")?.focus(), 30); }) });
       list.push({ id: "c-run", group: "当前任务", title: "查看执行过程", icon: Loader, keys: ["1"], run: done(() => setTab("run")) });
       list.push({ id: "c-diff", group: "当前任务", title: "查看代码变更", icon: Code, keys: ["2"], run: done(() => setTab("diff")) });
-      list.push({ id: "c-zt", group: "当前任务", title: "查看禅道原文", icon: Eye, keys: ["3"], run: done(() => setTab("zentao")) });
+      list.push({ id: "c-zt", group: "当前任务", title: "查看禅道原文", icon: Eye, keys: ["4"], run: done(() => setTab("zentao")) });
+      list.push({ id: "c-verify", group: "当前任务", title: "查看验证结果", icon: ShieldCheck, keys: ["3"], run: done(() => setTab("verify")) });
       if (cur.run.branch) list.push({ id: "c-copy", group: "当前任务", title: "复制分支名", hint: cur.run.branch, icon: GitBranch, run: done(() => copyText(cur.run.branch!, "已复制分支名")) });
     }
 

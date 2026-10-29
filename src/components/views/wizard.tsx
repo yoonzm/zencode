@@ -20,7 +20,7 @@ const STEPS = [
   { id: "zentao", title: "连接禅道", desc: "读取你的 Bug 和需求" },
   { id: "gitlab", title: "连接 GitLab", desc: "推送分支、创建 Merge Request" },
   { id: "codex", title: "配置 Codex", desc: "检测本机环境、选择模型与权限" },
-  { id: "repos", title: "仓库映射", desc: "产品对应哪个仓库" },
+  { id: "repos", title: "仓库映射", desc: "产品对应哪些仓库" },
   { id: "done", title: "完成", desc: "检查并开始使用" },
 ] as const;
 
@@ -28,7 +28,7 @@ const BLANK: AppConfig = {
   zentao: { baseUrl: "", edition: "biz", auth: "token", account: "", secret: "", scope: "mine", syncIntervalMin: 5, autoRun: true, connected: false },
   gitlab: { baseUrl: "", token: "", targetBranch: "main", mrDraft: true, connected: false },
   codex: { cliPath: "", model: "Codex · 标准", sandbox: "workspace-write", concurrency: 3, connected: false },
-  mappings: [{ id: "w1", product: "", repos: [{ id: "w1a", repo: "", branch: "", role: "", testCmd: "" }] }],
+  mappings: [],
 };
 
 export function Wizard() {
@@ -206,7 +206,7 @@ export function Wizard() {
                 {showErrors && !mapOk && (
                   <p className="flex items-start gap-2 rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">
                     <CircleAlert className="mt-0.5 size-4 shrink-0" />
-                    {draft.mappings.length === 0 ? "至少添加一个仓库映射。" : `还有 ${invalidCount} 个映射没有填写完整。`}
+                    {draft.mappings.length === 0 ? "请用 AI 自动匹配，或手动添加至少一个产品。" : `还有 ${invalidCount} 个映射没有填写完整。`}
                   </p>
                 )}
                 <RepoMappingEditor config={draft} value={draft.mappings} onChange={(mappings) => setDraft((d) => ({ ...d, mappings }))} showErrors={showErrors} />

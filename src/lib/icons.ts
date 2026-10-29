@@ -87,6 +87,7 @@ export {
   Smartphone,
   CreditCard,
   Globe,
+  Server,
   Lock,
   LayoutList,
   GitCompare,

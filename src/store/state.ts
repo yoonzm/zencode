@@ -70,7 +70,7 @@ export interface AppState extends Prefs {
   platform: Platform;
   prefill: { text: string; ref?: string; nonce: number } | null;
   diffFocus: { taskId: string; path: string; nonce: number } | null;
-  tab: "run" | "diff" | "zentao";
+  tab: "run" | "diff" | "verify" | "zentao";
 }
 
 const PREF_KEY = "zencode.prefs.v1";

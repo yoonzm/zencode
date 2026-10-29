@@ -1,6 +1,6 @@
 # ZenCode
 
-Tauri 2 + Rust desktop application, retaining the React / TypeScript / Tailwind 4 interface from [yoonzm/zencode-ui](https://github.com/yoonzm/zencode-ui), initial baseline `33c33acb1e557d00d4016fcb9d677cd44ff0ed88`, with UI components synchronized through `51cf32b`. Desktop service wiring and fixes are retained; prototype simulation controls are excluded.
+Tauri 2 + Rust desktop application, retaining the React / TypeScript / Tailwind 4 interface from [yoonzm/zencode-ui](https://github.com/yoonzm/zencode-ui), initial baseline `33c33acb1e557d00d4016fcb9d677cd44ff0ed88`, with UI components synchronized through `172a828`. Desktop service wiring and fixes are retained; prototype simulation controls are excluded.
 
 ## Development
 
@@ -59,3 +59,9 @@ Ordinary branch pushes build private CI artifacts only. After updating package/T
 To publish an already verified build, manually run **Publish verified installers** with its successful Desktop installers run ID, exact 40-character commit SHA and matching version tag. This reuses the original artifacts. Conflicting tags or existing releases are rejected; assets are never overwritten. Upload failures leave a draft for inspection. Installer checksums are included in SHA256SUMS.txt. Keep validation limitations in the release notes current before future versions.
 
 Tag pushes now run a lightweight build-decision check before allocating the Windows/macOS matrix. A tag with an existing same-SHA release (including an upload-complete draft during publication) skips the matrix and automatic release job only when its recorded Desktop installers run succeeded, all three platform jobs passed, all three source artifacts remain available, and the three versioned installers plus checksum manifest are uploaded and hashed. A mismatched SHA or incomplete/expired/unverified artifact set fails the check for inspection instead of silently reusing or overwriting it. New tags without a release, branch pushes and manual builds still build normally. This avoids re-packaging after publishing existing installers; the small decision job may still consume a runner minute. Test locally with `python3 -m unittest discover -s test -p '*_test.py'`.
+
+## Product verification
+
+Product mappings support an enabled switch and free-form verification instructions. After code changes and self-checks, Codex prepares a separate test plan and executes it, optionally waiting for plan confirmation in Codex settings. The verification tab shows the plan, reported evidence and actual command logs; reviewable tasks can run verification again. Missing/disabled instructions, skipped plans, interruptions or invalid reports remain unverified. Reports require nonempty steps with evidence before showing passed; results are Codex-reported and need human review. MR descriptions include the report, and anything other than passed forces a Draft MR. Existing repository role/test-command values remain compatible although the simplified mapping editor no longer edits them.
+
+Prototype-only AI draft, simulated trial-run and synthetic recording controls are excluded. No browser recording is fabricated. Live end-to-end validation still depends on the configured CLI tools and target environment.
