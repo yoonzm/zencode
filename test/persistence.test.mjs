@@ -10,6 +10,7 @@ test('failed credential persistence does not retry on toast updates and supports
  const result=await build({entryPoints:['src/store/state.ts'],bundle:true,write:false,format:'esm',platform:'browser',alias:{'@':`${process.cwd()}/src`},define:{'process.env.NODE_ENV':'"production"'}});
  const {store,hydrate,flushPrefs}=await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
  await hydrate();assert.equal(store.get().platform,'win');assert.equal(store.get().platformPref,undefined);assert.equal(store.get().windowControls,undefined);
+ assert.deepEqual(store.get().feishu,{enabled:false,webhook:'',secret:'',attention:true,result:true});
  assert.equal(store.get().config.zentao.syncIntervalMin,5);
  assert.equal(store.get().config.zentao.autoRun,true);
  assert.deepEqual(store.get().config.mappings,[{id:'legacy',product:'P',repos:[{id:'legacy-repo',repo:'team/app',branch:'develop',role:'',testCmd:'npm test'}]}]);

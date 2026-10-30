@@ -1,6 +1,6 @@
 # ZenCode
 
-Tauri 2 + Rust desktop application, retaining the React / TypeScript / Tailwind 4 interface from [yoonzm/zencode-ui](https://github.com/yoonzm/zencode-ui), initial baseline `33c33acb1e557d00d4016fcb9d677cd44ff0ed88`, with UI components synchronized through `c079165`. Desktop service wiring and fixes are retained; prototype simulation controls are excluded.
+Tauri 2 + Rust desktop application, retaining the React / TypeScript / Tailwind 4 interface from [yoonzm/zencode-ui](https://github.com/yoonzm/zencode-ui), initial baseline `33c33acb1e557d00d4016fcb9d677cd44ff0ed88`, with UI components synchronized through `00aa1bf`. Desktop service wiring and fixes are retained; prototype simulation controls are excluded.
 
 ## Development
 
@@ -20,6 +20,7 @@ npm run package
 
 ## Runtime
 
+- Deleting a task stops its execution and removes its independent local workspace, including local branches and uncommitted changes. Workspace cleanup failures keep the task available for retry. ZenTao tasks and remote Git branches are unaffected.
 - Native OS window decorations provide the window controls. Platform appearance and shortcut labels follow the actual runtime platform; prototype platform overrides are no longer restored.
 - Closing the main window hides ZenCode to the system tray and keeps background tasks running. Click the tray icon, choose “打开 ZenCode”, or launch ZenCode again to restore the window. Choose “退出” from the tray menu to quit and stop background workers; updater restarts still use the normal shutdown path.
 - ZenTao and GitLab each offer an opt-in **Advanced > Skip certificate verification** setting (off by default). It applies only to that service's API client, including authentication, synchronization, attachments and MR API requests. Certificate failures reveal the setting; successful tests identify when verification was skipped. Git push retains the local Git TLS configuration. No global TLS or Git settings are changed.
@@ -94,3 +95,11 @@ UI synchronized through `zencode-ui` commit `df549fe`: stop/continue controls re
 The task list and command palette offer **新增需求**: paste source text, ask the configured Codex CLI to organize it, review/edit the candidates, then import. Organization is read-only with tools disabled and a three-minute timeout; errors preserve the input. Only source text and configured product names are sent to the model. Generated content requires review.
 
 Import persists the entire batch atomically, creates one idle task per mapped repository, and retains the original source. Manual tasks use N-prefixed local numbers, survive ZenTao synchronization, and never auto-run on import or link to ZenTao. Deletion cannot restore them through synchronization. They use the existing execution, verification and MR workflow; MR descriptions identify the manual origin. Local fixture tests cover organization and persistence; live model and native desktop validation remain environment-dependent.
+
+## Feishu notifications
+
+UI synchronized through `00aa1bf`. Notification settings support opt-in Feishu/Lark custom-bot delivery, signed requests, an explicit test button and message previews. Webhook URLs and signing secrets use the system credential vault. Background runtime transitions send approval/verification-plan requests, failures, verification failures, review-ready results and MR completion independently of desktop notification preferences. Streaming updates do not repeat notifications. Delivery errors are reported without exposing webhook credentials; delivery has a 15-second timeout and no automatic retry or offline replay.
+
+Messages contain task number/title, product, changed-file count and MR branch/link when applicable; requirement bodies, code, commands and model output are excluded. Return to ZenCode by task number: app deep links and personal @ mentions are not implemented. Tests do not send to live groups; validate actual delivery with the settings test button after configuring a bot. Signing follows the [Feishu custom bot guide](https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot).
+
+Browser verification instructions require Playwright in headless mode with a fresh isolated browser context for task verification, re-verification, resumed sessions and mapping trials/drafts. They prohibit Computer Use, user-browser profiles/cookies and attaching to existing browsers or CDP endpoints. Missing tools or test credentials must be reported as unverified, never worked around using a personal browser. This is an agent instruction constraint, not an OS-level browser access sandbox.

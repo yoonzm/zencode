@@ -42,6 +42,14 @@ export interface Notify {
   sound: boolean;
 }
 
+export interface Feishu {
+  enabled: boolean;
+  webhook: string;
+  secret: string;
+  attention: boolean;
+  result: boolean;
+}
+
 export interface Prefs {
   theme: ThemePref;
   density: "comfortable" | "compact";
@@ -51,6 +59,7 @@ export interface Prefs {
   sort: "updated" | "priority" | "deadline";
   setupDone: boolean;
   notify: Notify;
+  feishu: Feishu;
   cleanupDays: number;
   autoUpdate: boolean;
   channel: "stable" | "beta";
@@ -100,6 +109,7 @@ const defaultPrefs: Prefs = {
   sort: "updated",
   setupDone: false,
   notify: { done: true, approval: true, failed: true, sound: false },
+  feishu: { enabled: false, webhook: "", secret: "", attention: true, result: true },
   cleanupDays: 30,
   autoUpdate: true,
   channel: "stable",
@@ -138,13 +148,14 @@ export function useApp<S>(selector: (s: AppState) => S): S {
 }
 
 // ── 持久化 ────────────────────────────────────────────────
-const PERSIST_KEYS: (keyof Prefs)[] = ["theme", "density", "sidebarOpen", "listWidth", "group", "sort", "setupDone", "notify", "cleanupDays", "autoUpdate", "channel", "config"];
+const PERSIST_KEYS: (keyof Prefs)[] = ["theme", "density", "sidebarOpen", "listWidth", "group", "sort", "setupDone", "notify", "feishu", "cleanupDays", "autoUpdate", "channel", "config"];
 let lastPersisted = "";
 let hydrated = false;
 export async function hydrate() {
   const data = await desktopCall("load");
   // Only supported preferences are restored; obsolete prototype platform overrides are ignored.
   const prefs = Object.fromEntries(PERSIST_KEYS.filter(k => k in (data.prefs ?? {})).map(k => [k, data.prefs[k]]));
+  prefs.feishu = { ...defaultPrefs.feishu, ...(prefs.feishu ?? {}) };
   prefs.cleanupDays = [7, 30, 60, 90].includes(prefs.cleanupDays) ? prefs.cleanupDays : 30;
   prefs.autoUpdate = prefs.autoUpdate !== false;
   prefs.channel = prefs.channel === "beta" ? "beta" : "stable";

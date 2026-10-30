@@ -28,6 +28,9 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
  if(m==='initialize') send({id:r.id,result:{}});
  if(m==='thread/resume'||m==='thread/start') {
   if(p.developerInstructions.includes('只在当前任务工作区实现需求') || !p.developerInstructions.includes('访问、登录、部署并验证用户指定的测试环境')) throw Error('Workspace policy blocks remote verification');
+    for (const rule of ['Playwright', 'headless: true', 'connectOverCDP', '禁止使用 Computer Use', 'unverified']) {
+      if (!p.developerInstructions.includes(rule)) throw Error('Missing isolated headless browser policy: ' + rule);
+    }
   send({id:r.id,result:{thread:{id:'fixture'}}});
  }
  if(m==='turn/start') {

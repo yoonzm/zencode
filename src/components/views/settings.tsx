@@ -1,3 +1,4 @@
+import { FEISHU_HOOK, buildCard } from "@/store/push";
 import { checkUpdate, downloadUpdate, requestInstall, changeChannel } from "@/store/update";
 import { flushPrefs } from "@/store/state";
 import { desktopCall } from "@/lib/desktop";
@@ -11,7 +12,7 @@ import { toast } from "@/store/toast";
 import { navigate, useRoute } from "@/lib/route";
 import { useMedia } from "@/lib/hooks";
 import { Button } from "@/components/ui/button";
-import { Checkbox, Segmented, Toggle } from "@/components/ui/fields";
+import { Checkbox, Input, Segmented, Toggle } from "@/components/ui/fields";
 import { Modal } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
 import { CodexForm, GitlabForm, ZentaoForm } from "@/components/forms/config-forms";
@@ -194,16 +195,103 @@ function ReposSection() {
   );
 }
 
+const PREVIEW_TASK = { id: "demo", kind: "bug", no: 3182, title: "登录成功后未跳转到原访问页面", product: "企业管理后台" } as const;
+const PREVIEW_RUN = { files: [{}, {}, {}, {}, {}], branch: "zencode/bug-3182", startedAt: Date.now() - 6 * 60000, finishedAt: Date.now(), verify: { state: "failed", summary: "登录后仍停留在首页，期望回到 /orders" } } as any;
+
+const TONE_BAR: Record<string, string> = { danger: "bg-danger", warn: "bg-warning", success: "bg-success", info: "bg-accent" };
+
+function FeishuPreview() {
+  const [kind, setKind] = useState<"attention" | "result">("attention");
+  const card = kind === "attention" ? buildCard("verify-failed", PREVIEW_TASK as any, PREVIEW_RUN) : buildCard("done", PREVIEW_TASK as any, { ...PREVIEW_RUN, verify: { state: "passed" } });
+  return (
+    <div className="mt-3 rounded-xl border border-border bg-muted/40 p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <span className="text-xs font-medium text-muted-foreground">群里收到的消息</span>
+        <Segmented size="sm" label="消息类型" value={kind} onChange={setKind} options={[{ value: "attention", label: "需要你介入" }, { value: "result", label: "有结果" }]} />
+      </div>
+      <div className="max-w-sm overflow-hidden rounded-lg border border-border bg-card shadow-xs">
+        <div className={cn("px-3.5 py-2 text-sm font-semibold text-white", TONE_BAR[card.tone])}>{card.title}</div>
+        <dl className="space-y-1.5 px-3.5 py-3 text-[13px] leading-5">
+          {card.lines.map(([k, v]) => (
+            <div key={k} className="flex gap-3">
+              <dt className="w-9 shrink-0 text-muted-foreground">{k}</dt>
+              <dd className="min-w-0 flex-1 break-words text-foreground">{v}</dd>
+            </div>
+          ))}
+        </dl>
+        <div className="border-t border-border px-3.5 py-2.5">
+          <span className="inline-flex h-7 items-center rounded-md border border-border-strong px-3 text-xs font-medium text-foreground">回到 ZenCode 查看任务</span>
+        </div>
+      </div>
+      {kind === "attention" && <p className="mt-2 text-xs text-subtle-foreground">消息里不带需求描述和代码。收到提醒后，回到 ZenCode 按任务编号查看。</p>}
+    </div>
+  );
+}
+
+function FeishuSection() {
+  const f = useApp((s) => s.feishu);
+  const set = (p: Partial<typeof f>) => store.set((s) => ({ feishu: { ...s.feishu, ...p } }));
+  const hookOk = FEISHU_HOOK.test(f.webhook.trim());
+  const bad = !!f.webhook.trim() && !hookOk;
+  const [sending, setSending] = useState(false);
+  const test = async () => {
+    setSending(true);
+    try {
+      await desktopCall("feishuTest", { ...f, webhook: f.webhook.trim() });
+      toast({ tone: "success", title: "测试消息已发送", desc: "去飞书群里看一下有没有收到。", duration: 3200 });
+    } catch (e) {
+      toast({ tone: "danger", title: "飞书测试发送失败", desc: String(e), duration: 6000 });
+    } finally { setSending(false); }
+  };
+  return (
+    <section className="mt-8">
+      <h3 className="mb-1 text-sm font-medium text-foreground">飞书</h3>
+      <p className="mb-3 text-xs leading-5 text-muted-foreground">人不在电脑旁时，任务的结果和需要你处理的事会推送到飞书群。建议建一个只有自己的群。</p>
+      <Group>
+        <Row title="推送到飞书" desc="先在群里添加「自定义机器人」，把它的 Webhook 地址粘贴到下面。">
+          <Toggle label="推送到飞书" checked={f.enabled} onChange={(v) => set({ enabled: v })} />
+        </Row>
+        {f.enabled && (
+          <>
+            <div className="space-y-3 py-3.5">
+              <label className="block text-xs font-medium text-muted-foreground">
+                Webhook 地址
+                <Input value={f.webhook} onChange={(e) => set({ webhook: e.target.value })} placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/…" spellCheck={false} invalid={bad} className="mt-1.5 font-mono text-[13px]" />
+                {bad && <span className="mt-1 block font-normal text-danger" role="alert">地址格式不对，请填写完整的飞书或 Lark 自定义机器人 Webhook 地址</span>}
+              </label>
+              <label className="block text-xs font-medium text-muted-foreground">
+                签名密钥（机器人开启了签名校验时填写）
+                <Input type="password" value={f.secret} onChange={(e) => set({ secret: e.target.value })} placeholder="可选" autoComplete="off" className="mt-1.5" />
+              </label>
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" size="sm" disabled={!hookOk || sending} onClick={test}>{sending ? "发送中…" : "发送测试消息"}</Button>
+                <span className="text-xs text-subtle-foreground">地址和密钥保存在系统凭据库</span>
+              </div>
+            </div>
+            <Row title="需要你介入" desc="需要审批、等你确认测试计划、执行失败、验证未通过。每条单独发送到群。"><Toggle label="需要你介入" checked={f.attention} onChange={(v) => set({ attention: v })} /></Row>
+            <Row title="有结果" desc="任务完成待审核、Merge Request 已创建。"><Toggle label="有结果" checked={f.result} onChange={(v) => set({ result: v })} /></Row>
+          </>
+        )}
+      </Group>
+      {f.enabled && <FeishuPreview />}
+    </section>
+  );
+}
+
 function Notifications() {
   const n = useApp((s) => s.notify);
   const set = (k: keyof Notify) => (v: boolean) => store.set((s) => ({ notify: { ...s.notify, [k]: v } }));
   return (
-    <Group>
-      <Row title="任务完成" desc="Codex 完成修改、等待你审核时提醒。"><Toggle label="任务完成通知" checked={n.done} onChange={set("done")} /></Row>
-      <Row title="需要审批" desc="Codex 要执行工作区以外的命令时提醒。"><Toggle label="审批通知" checked={n.approval} onChange={set("approval")} /></Row>
-      <Row title="任务失败" desc="测试没通过或 Codex 异常退出时提醒。"><Toggle label="失败通知" checked={n.failed} onChange={set("failed")} /></Row>
-      <Row title="提示音"><Toggle label="提示音" checked={n.sound} onChange={set("sound")} /></Row>
-    </Group>
+    <>
+      <h3 className="mb-3 text-sm font-medium text-foreground">桌面</h3>
+      <Group>
+        <Row title="任务完成" desc="Codex 完成修改、等待你审核时提醒。"><Toggle label="任务完成通知" checked={n.done} onChange={set("done")} /></Row>
+        <Row title="需要审批" desc="Codex 要执行工作区以外的命令时提醒。"><Toggle label="审批通知" checked={n.approval} onChange={set("approval")} /></Row>
+        <Row title="任务失败" desc="测试没通过或 Codex 异常退出时提醒。"><Toggle label="失败通知" checked={n.failed} onChange={set("failed")} /></Row>
+        <Row title="提示音"><Toggle label="提示音" checked={n.sound} onChange={set("sound")} /></Row>
+      </Group>
+      <FeishuSection />
+    </>
   );
 }
 

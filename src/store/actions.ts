@@ -103,7 +103,7 @@ export function deleteTask(id: string) {
   if (!task) return;
   askConfirm({
     title: "删除这个任务？",
-    desc: task.manual ? `${task.title} 是手动新增的，删除后无法通过同步找回。正在进行的执行会被终止，已有独立工作区和 Git 分支保留在磁盘。` : `${task.title} 只会从 ZenCode 中删除，禅道中的任务不受影响。正在进行的执行会被终止，执行记录将从任务中移除。已有独立工作区和 Git 分支保留在磁盘，但不会复用；下次同步时此任务将从头开始。`,
+    desc: task.manual ? `${task.title} 是手动新增的，删除后无法通过同步找回。正在进行的执行会被终止，执行记录、独立工作区及其中的本地分支和未提交修改将一并删除，无法撤销。` : `${task.title} 将从 ZenCode 中删除，禅道中的任务不受影响。正在进行的执行会被终止，执行记录、独立工作区及其中的本地分支和未提交修改将一并删除，无法撤销。下次同步时此任务将从头开始。`,
     confirmLabel: "删除",
     danger: true,
     onConfirm: async () => {

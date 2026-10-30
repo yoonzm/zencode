@@ -1,3 +1,4 @@
+mod feishu;
 mod manual;
 pub mod codex;
 mod cleanup;

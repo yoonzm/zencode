@@ -55,8 +55,8 @@ impl Storage {
 }
 pub fn store_secrets(prefs: &Value) -> Result<Value> {
     let mut clean = prefs.clone();
-    for (service, field) in [("zentao", "secret"), ("gitlab", "token")] {
-        let secret = crate::text(&prefs["config"][service], field);
+    for (service, path) in [("zentao", "/config/zentao/secret"), ("gitlab", "/config/gitlab/token"), ("feishu-webhook", "/feishu/webhook"), ("feishu-secret", "/feishu/secret")] {
+        let secret = prefs.pointer(path).and_then(Value::as_str).unwrap_or("");
         if !secret.is_empty() {
             if cfg!(target_os = "linux") {
                 return Err("此版本的安全凭据存储仅支持 Windows/macOS".into());
@@ -65,16 +65,16 @@ pub fn store_secrets(prefs: &Value) -> Result<Value> {
                 .map_err(|e| e.to_string())?
                 .set_password(secret)
                 .map_err(|e| format!("系统钥匙串保存失败：{e}"))?;
-            clean["config"][service][field] = json!("@keyring");
+            *clean.pointer_mut(path).unwrap() = json!("@keyring");
         }
     }
     Ok(clean)
 }
 pub fn restore_secrets(prefs: &Value) -> Result<Value> {
     let mut restored = prefs.clone();
-    for (service, field) in [("zentao", "secret"), ("gitlab", "token")] {
-        if crate::text(&prefs["config"][service], field) == "@keyring" {
-            restored["config"][service][field] =
+    for (service, path) in [("zentao", "/config/zentao/secret"), ("gitlab", "/config/gitlab/token"), ("feishu-webhook", "/feishu/webhook"), ("feishu-secret", "/feishu/secret")] {
+        if prefs.pointer(path).and_then(Value::as_str) == Some("@keyring") {
+            *restored.pointer_mut(path).unwrap() =
                 json!(keyring::Entry::new("io.github.yoonzm.zencode", service)
                     .map_err(|e| e.to_string())?
                     .get_password()

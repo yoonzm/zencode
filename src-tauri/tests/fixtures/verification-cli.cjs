@@ -11,6 +11,9 @@ readline.createInterface({input: process.stdin}).on('line', line => {
   if (m === 'initialize') send({id: r.id, result: {}});
   if (m === 'thread/start') {
     if (p.developerInstructions.includes('只在本次独立工作目录中分析或验证仓库') || !p.developerInstructions.includes('访问、登录、部署并验证用户指定的测试环境')) throw Error('Workspace policy blocks remote verification');
+    for (const rule of ['Playwright', 'headless: true', 'connectOverCDP', '禁止使用 Computer Use', 'unverified']) {
+      if (!p.developerInstructions.includes(rule)) throw Error('Missing isolated headless browser policy: ' + rule);
+    }
     fs.writeFileSync('session-policy.json', JSON.stringify(p));
     send({id: r.id, result: {thread: {id: 'fixture'}}});
   }
