@@ -33,9 +33,10 @@ test('real sync drives loading, empty, failure and recovery without simulation a
  assert.equal(store.get().syncError,undefined);
  location.hash='#task-bug-1';
  actions.deleteTask('bug-1');assert.equal(store.get().tasks.length,1);
- const rejected=store.get().confirm.onConfirm();rejectSync(Error('Cannot delete'));await rejected;
+ const rejected=actions.runConfirm();await Promise.resolve();rejectSync(Error('Cannot delete'));await rejected;
+ assert.equal(store.get().confirm.error,'Cannot delete');
  assert.equal(store.get().tasks.length,1);assert.equal(location.hash,'#task-bug-1');
- actions.deleteTask('bug-1');const deleted=store.get().confirm.onConfirm();resolveSync(null);await deleted;
+ actions.deleteTask('bug-1');const deleted=actions.runConfirm();await Promise.resolve();resolveSync(null);await deleted;
  assert.equal(store.get().tasks.length,0);assert.equal(store.get().listStatus,'empty');assert.equal(location.hash,'#tasks');
  const resync=sync();resolveSync([{id:'bug-1',description:[],run:{state:'idle'}}]);await resync;
  assert.equal(store.get().tasks[0].run.state,'idle');

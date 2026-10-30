@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { ZTask } from '@/data/types';
-declare global { interface Window { desktop?: { call: (op: string, args?: any) => Promise<any>; onTask: (fn: (task: ZTask) => void) => () => void; onError: (fn: (message: string) => void) => () => void }; } }
+declare global { interface Window { desktop?: { call: (op: string, args?: any) => Promise<any>; onTask: (fn: (task: ZTask) => void) => () => void; onError: (fn: (message: string) => void) => () => void; onDeleteProgress?: (fn: (event: { id: string; message: string }) => void) => Promise<() => void> }; } }
 if ('__TAURI_INTERNALS__' in window) {
   const subscribe = (name: string, callback: (data: any) => void) => {
     let stopped = false;
@@ -14,6 +14,7 @@ if ('__TAURI_INTERNALS__' in window) {
     call: (op, args) => invoke('desktop_call', { op, args }).catch(error => { throw new Error(String(error)); }),
     onTask: fn => subscribe('desktop:task', fn),
     onError: fn => subscribe('desktop:error', fn),
+    onDeleteProgress: fn => listen<{ id: string; message: string }>('desktop:delete', event => fn(event.payload)),
   };
   document.addEventListener('mousedown', e => {
     const target = e.target as HTMLElement;

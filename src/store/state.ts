@@ -32,7 +32,11 @@ export interface ConfirmReq {
   desc: string;
   confirmLabel: string;
   danger?: boolean;
-  onConfirm: () => void;
+  busy?: boolean;
+  busyLabel?: string;
+  progress?: string;
+  error?: string;
+  onConfirm: () => void | Promise<void>;
 }
 
 export interface Notify {

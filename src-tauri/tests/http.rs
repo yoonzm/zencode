@@ -30,9 +30,11 @@ async fn deleted_task_syncs_back_with_fresh_run_without_remote_writes() {
     let dir = tempfile::tempdir().unwrap();
     let retained = dir.path().join("worktree.txt");
     std::fs::write(&retained, "existing user changes").unwrap();
+    let workspace = dir.path().join("worktrees/bug-7");
+    std::fs::create_dir_all(&workspace).unwrap();
     let mut run = empty_run();
     run["state"] = json!("done");
-    run["worktree"] = json!(retained);
+    run["worktree"] = json!(workspace);
     run["branch"] = json!("old-branch");
     run["threadId"] = json!("old-thread");
     run["mr"] = json!({"iid":1});
@@ -48,6 +50,7 @@ async fn deleted_task_syncs_back_with_fresh_run_without_remote_writes() {
     assert_eq!(tasks[0]["id"], "bug-7");
     assert_eq!(tasks[0]["run"], empty_run());
     assert_eq!(std::fs::read_to_string(retained).unwrap(), "existing user changes");
+    assert!(!workspace.exists());
 }
 #[tokio::test]
 async fn automatic_cleanup_suppresses_closed_tasks_and_reimports_open_tasks_without_running() {

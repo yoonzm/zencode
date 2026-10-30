@@ -28,10 +28,23 @@ export function setShortcuts(open: boolean) {
 }
 
 export function askConfirm(c: NonNullable<ReturnType<typeof store.get>["confirm"]>) {
+  if (store.get().confirm?.busy) return;
   store.set({ confirm: c });
 }
 export function closeConfirm() {
+  if (store.get().confirm?.busy) return;
   store.set({ confirm: null });
+}
+export async function runConfirm() {
+  const c = store.get().confirm;
+  if (!c || c.busy) return;
+  store.set({ confirm: { ...c, busy: true, error: undefined } });
+  try {
+    await c.onConfirm();
+    store.set({ confirm: null });
+  } catch (e) {
+    store.set({ confirm: { ...c, error: e instanceof Error ? e.message : String(e) } });
+  }
 }
 
 // ── 列表 ─────────────────────────────────────────────────
@@ -105,18 +118,23 @@ export function deleteTask(id: string) {
     title: "删除这个任务？",
     desc: task.manual ? `${task.title} 是手动新增的，删除后无法通过同步找回。正在进行的执行会被终止，执行记录、独立工作区及其中的本地分支和未提交修改将一并删除，无法撤销。` : `${task.title} 将从 ZenCode 中删除，禅道中的任务不受影响。正在进行的执行会被终止，执行记录、独立工作区及其中的本地分支和未提交修改将一并删除，无法撤销。下次同步时此任务将从头开始。`,
     confirmLabel: "删除",
+    busyLabel: "正在删除…",
     danger: true,
     onConfirm: async () => {
+      const progress = (message: string) => store.set(s => ({ confirm: s.confirm ? { ...s.confirm, progress: message } : null }));
+      progress("正在提交删除请求…");
+      let off: (() => void) | undefined;
       try {
-        await desktopCall("delete", { id });
+        off = await window.desktop?.onDeleteProgress?.(event => { if (event.id === id) progress(event.message); });
+        const result = await desktopCall("delete", { id });
         taskRevision++;
         store.set(s => {
           const tasks = s.tasks.filter(t => t.id !== id);
           return { tasks, listStatus: tasks.length ? "ready" : "empty" };
         });
         if (location.hash === `#task-${id}`) navigate({ name: "tasks" });
-        toast(task.manual ? { title: "已删除任务", tone: "info" } : { title: "已删除任务", desc: "下次同步会从禅道重新拉回，并从头开始。", tone: "info", action: { label: "立即同步", run: () => { void sync(); } } });
-      } catch (e) { report(e); }
+        toast({ title: "任务已移除", desc: [result?.cleanupPending ? "文件正在后台清理。" : "", task.manual ? "" : "下次同步会从禅道重新拉回，并从头开始。"].join(""), tone: "info", ...(!task.manual ? { action: { label: "立即同步", run: () => { void sync(); } } } : {}) });
+      } finally { off?.(); }
     },
   });
 }

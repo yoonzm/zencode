@@ -1,5 +1,5 @@
 import { useApp } from "@/store/state";
-import { closeConfirm, setShortcuts } from "@/store/actions";
+import { closeConfirm, runConfirm, setShortcuts } from "@/store/actions";
 import { Modal } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
@@ -16,20 +16,20 @@ export function ConfirmHost() {
       hideClose
       footer={
         <>
-          <Button variant="secondary" onClick={closeConfirm}>取消</Button>
+          <Button variant="secondary" disabled={c?.busy} onClick={closeConfirm}>取消</Button>
           <Button
             variant={c?.danger ? "danger" : "primary"}
-            onClick={() => {
-              const run = c?.onConfirm;
-              closeConfirm();
-              run?.();
-            }}
+            loading={c?.busy}
+            onClick={() => { void runConfirm(); }}
           >
-            {c?.confirmLabel}
+            {c?.busy ? c.busyLabel || "处理中…" : c?.confirmLabel}
           </Button>
         </>
       }
-    />
+    >
+      {c?.busy && <p role="status" aria-live="polite" className="text-sm text-muted-foreground">{c.progress || "正在处理，请稍候…"}</p>}
+      {c?.error && <p role="alert" className="break-words text-sm text-danger">{c.error}</p>}
+    </Modal>
   );
 }
 

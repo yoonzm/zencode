@@ -16,6 +16,8 @@ use std::{
 };
 use tokio::sync::{Mutex, Notify, Semaphore};
 use uuid::Uuid;
+#[path = "deletion.rs"]
+mod deletion;
 pub type Emit = Arc<dyn Fn(&str, Value) + Send + Sync>;
 struct Job {
     session: Mutex<Option<Arc<Session>>>,
@@ -56,11 +58,17 @@ pub struct Runtime {
     task_mutations: Mutex<()>,
     updating: AtomicBool,
     verification_tools: crate::verification_tools::Tools,
+    delete_cleaner_started: AtomicBool,
+    delete_wake: Arc<Notify>,
 }
 impl Runtime {
     pub fn new(root: PathBuf, emit: Emit) -> Result<Arc<Self>> {
         let storage = Storage::new(&root);
         let mut data = storage.load()?;
+        if data["pendingDeletes"].is_array() || data["tasks"].as_array().is_some_and(|ts| ts.iter().any(|t| t["run"]["deleting"] == true)) {
+            deletion::recover(&root, &mut data)?;
+            storage.save(&data)?;
+        }
         if let Some(tasks) = data["tasks"].as_array_mut() {
             for t in tasks {
                 t["run"]["mrBusy"] = json!(false);
@@ -92,6 +100,8 @@ impl Runtime {
             task_mutations: Mutex::new(()),
             updating: AtomicBool::new(false),
             verification_tools: crate::verification_tools::Tools::default(),
+            delete_cleaner_started: AtomicBool::new(false),
+            delete_wake: Arc::new(Notify::new()),
         }))
     }
     async fn persist(&self) -> Result<()> {
@@ -168,6 +178,7 @@ impl Runtime {
         .await
     }
     pub async fn call(self: &Arc<Self>, op: &str, args: Value) -> Result<Value> {
+        if op == "delete" { return self.delete_task(text(&args, "id")).await; }
         // A deletion must not race a sync merge, a new run, or MR submission.
         let _mutation = if matches!(op, "refreshDiff" | "importManual" | "sync" | "delete" | "start" | "reverify" | "mr" | "cleanup" | "resumeAfterUpdate" | "verificationToolStart") {
             Some(self.task_mutations.lock().await)
@@ -176,6 +187,11 @@ impl Runtime {
         };
         if self.updating.load(Ordering::SeqCst) && !matches!(op, "load" | "viewed") {
             return Err("正在准备安装更新，请稍后再试".into());
+        }
+        if matches!(op, "start" | "reverify" | "mr" | "refreshDiff" | "openWorkdir") {
+            let task = self.task(text(&args, "id")).await?;
+            let pending = self.data.lock().await["pendingDeletes"].as_array().is_some_and(|rs| rs.iter().any(|r| r["taskId"] == args["id"] && r["ready"] != true));
+            if task["run"]["deleting"] == true || pending { return Err("任务正在删除或等待恢复，暂时无法执行此操作".into()); }
         }
         match op {
             "feishuTest" => {
@@ -250,6 +266,7 @@ impl Runtime {
                 Ok(json!(path))
             }
             "load" => {
+                self.start_delete_cleanup();
                 let mut data = self.data.lock().await.clone();
                 data["prefs"] = restore_secrets(&data["prefs"])?;
                 data["platform"] = json!(if cfg!(target_os = "macos") {
@@ -388,7 +405,7 @@ impl Runtime {
                         }
                     }
                     for previous in old {
-                        if (previous["manual"] == true || text(&previous["run"], "state") != "idle")
+                        if (previous["manual"] == true || previous["run"]["deleting"] == true || text(&previous["run"], "state") != "idle")
                             && !tasks.iter().any(|t| t["id"] == previous["id"])
                         {
                             tasks.push(previous);
@@ -407,37 +424,6 @@ impl Runtime {
                     }
                 }
                 Ok(self.data.lock().await["tasks"].clone())
-            }
-            "delete" => {
-                let id = text(&args, "id");
-                let deleted = self.task(id).await?;
-                self.deletion_workspace(&deleted).await?;
-                let job = self.jobs.lock().await.get(id).cloned();
-                if let Some(job) = job {
-                    job.stopped.store(true, Ordering::SeqCst);
-                    job.cancel_queue.notify_one();
-                    if let Some(session) = job.session.lock().await.clone() {
-                        session.close().await;
-                    }
-                    tokio::time::timeout(std::time::Duration::from_secs(35), job.finished.notified())
-                        .await
-                        .map_err(|_| "执行仍在停止中，任务尚未删除，请稍后重试".to_string())?;
-                }
-                // Read again after stopping: a starting worker may have created its workspace.
-                let current = self.task(id).await?;
-                if let Some(path) = self.deletion_workspace(&current).await? {
-                    std::fs::remove_dir_all(path).map_err(|e| format!("删除工作目录失败，任务已保留，请重试：{e}"))?;
-                }
-                let mut data = self.data.lock().await;
-                let mut next = data.clone();
-                next["tasks"].as_array_mut().ok_or("任务数据无效")?
-                    .retain(|t| text(t, "id") != id);
-                if let Some(markers) = next["cleanupMarkers"].as_array_mut() {
-                    markers.retain(|m| !crate::cleanup::same(m, &deleted));
-                }
-                self.storage.save(&next)?;
-                *data = next;
-                Ok(Value::Null)
             }
             "verifyDecision" => {
                 let id = text(&args, "id");
@@ -619,6 +605,10 @@ impl Runtime {
         drop(jobs);
         // Validate every path before stopping jobs or removing any data.
         for t in &selected {
+            if t["run"]["deleting"] == true { return Err("所选任务正在删除，请稍后再清理".into()); }
+            if self.data.lock().await["pendingDeletes"].as_array().is_some_and(|rs| rs.iter().any(|r| r["taskId"] == t["id"] && r["ready"] != true)) {
+                return Err("所选任务的删除尚待恢复，请重启应用后再清理".into());
+            }
             crate::cleanup::workspace(&self.root, t)?;
             let worktree = text(&t["run"], "worktree");
             if !worktree.is_empty() && tasks.iter().any(|other| other["id"] != t["id"] && text(&other["run"], "worktree") == worktree) {
@@ -674,6 +664,10 @@ impl Runtime {
     }
     async fn enqueue(self: &Arc<Self>, id: &str, config: Value, instruction: String) -> Result<()> {
         let t = self.task(id).await?;
+        if t["run"]["deleting"] == true { return Err("任务正在删除，无法启动".into()); }
+        if self.data.lock().await["pendingDeletes"].as_array().is_some_and(|rs| rs.iter().any(|r| text(r, "taskId") == id && r["ready"] != true)) {
+            return Err("任务的删除尚待恢复，请重启应用后再启动".into());
+        }
         if let Some(job) = self.jobs.lock().await.get(id).cloned() {
             if instruction.trim().is_empty() { return Ok(()); }
             let mut pending = job.pending.lock().await;
@@ -727,18 +721,22 @@ impl Runtime {
                 session.close().await;
             }
             if let Err(e) = result {
-                let paused = job.paused.load(Ordering::SeqCst);
-                let _ = rt.diff(&id).await;
-                let _ = rt
-                    .update(&id, |t| {
-                        t["run"]["state"] = json!(if paused { "paused" } else { "failed" });
-                        if t["run"]["verify"].is_object() {
-                            t["run"]["verify"]["state"] = json!("unverified");
-                            t["run"]["verify"]["summary"] = json!(e);
-                        }
-                        push_event(t, json!({"kind":if paused{"system"}else{"error"},"text":e}));
-                    })
-                    .await;
+                if !rt.task(&id).await.is_ok_and(|t| t["run"]["deleting"] == true) {
+                    let paused = job.paused.load(Ordering::SeqCst);
+                    let _ = rt.diff(&id).await;
+                    let _ = rt
+                        .update(&id, |t| {
+                            t["run"]["state"] = json!(if paused { "paused" } else { "failed" });
+                            if t["run"]["verify"].is_object() {
+                                t["run"]["verify"]["state"] = json!("unverified");
+                                t["run"]["verify"]["summary"] = json!(e);
+                            }
+                            push_event(t, json!({"kind":if paused{"system"}else{"error"},"text":e}));
+                        })
+                        .await;
+                } else {
+                    let _ = rt.update(&id, |t| t["run"]["state"] = json!("stopped")).await;
+                }
             }
             let _ = rt
                 .update(&id, |t| t["run"]["finishedAt"] = json!(now()))
@@ -1173,6 +1171,7 @@ impl Runtime {
     async fn checkpoint_update(&self, version: &str) -> Result<()> {
         if self.verification_tools.busy().await { return Err("验证草稿或试运行尚未结束，请先完成或取消后安装更新".into()); }
         let tasks = self.data.lock().await["tasks"].as_array().cloned().unwrap_or_default();
+        if tasks.iter().any(|t| t["run"]["deleting"] == true) { return Err("有任务正在删除，请完成后再安装更新".into()); }
         if tasks.iter().any(|t| text(&t["run"], "state") == "waiting") {
             return Err("有任务正在等待权限审批或测试计划确认，请先处理后再安装更新".into());
         }
