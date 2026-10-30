@@ -30,7 +30,7 @@ async fn fixture() -> Fixture {
         std::fs::set_permissions(&cli,std::fs::Permissions::from_mode(0o700)).unwrap(); cli
     };
     let root=dir.path().join("data"); let rt=Runtime::new(root.clone(),Arc::new(|_,_|{})).unwrap();
-    let config=json!({"gitlab":{"baseUrl":format!("http://127.0.0.1:{port}"),"token":"private-test-token"},"codex":{"cliPath":cli,"sandbox":"workspace-write","confirmPlan":true}});
+    let config=json!({"gitlab":{"baseUrl":format!("http://127.0.0.1:{port}"),"token":"private-test-token"},"codex":{"cliPath":cli,"sandbox":"workspace-write","effort":"ultra","model":"fixture-model"}});
     let mapping=json!({"product":"P","repos":[{"repo":"team/app","branch":"main"}],"verify":{"enabled":true,"prompt":"Verify the README command"}});
     Fixture{_dir:dir,_server:server,root,rt,config,mapping}
 }
@@ -58,10 +58,8 @@ async fn real_clone_draft_trial_approval_and_cleanup() {
     assert_eq!(s["sources"][0]["branch"],"main");
     assert!(!f.root.join("verification-tools").join(&id).exists());
     let id=start(&f,"trial",&f.mapping).await;
-    let plan=wait(&f,&id,"plan").await;
     assert!(f.rt.prepare_update("9.9.9").await.is_err());
     assert!(f.rt.call("verificationToolDecide",json!({"id":id,"waitingId":"stale","go":true})).await.is_err());
-    decide(&f,&id,&plan,true).await;
     let approval=wait(&f,&id,"approval").await;
     decide(&f,&id,&approval,true).await;
     let s=wait(&f,&id,"done").await;
@@ -74,10 +72,10 @@ async fn real_clone_draft_trial_approval_and_cleanup() {
 async fn skipped_cancelled_failed_and_invalid_trials_never_pass() {
     let f=fixture().await;
     let id=start(&f,"trial",&f.mapping).await;
-    let plan=wait(&f,&id,"plan").await; decide(&f,&id,&plan,false).await;
-    assert_eq!(wait(&f,&id,"done").await["result"]["verify"]["state"],"unverified");
+    let plan=wait(&f,&id,"approval").await; decide(&f,&id,&plan,false).await;
+    assert!(wait(&f,&id,"error").await["result"].is_null());
     let id=start(&f,"trial",&f.mapping).await;
-    wait(&f,&id,"plan").await;
+    wait(&f,&id,"approval").await;
     f.rt.call("verificationToolCancel",json!({"id":id})).await.unwrap();
     let s=wait(&f,&id,"error").await; assert!(s["result"].is_null());
     assert!(!f.root.join("verification-tools").join(&id).exists());
@@ -85,7 +83,6 @@ async fn skipped_cancelled_failed_and_invalid_trials_never_pass() {
         let mut mapping=f.mapping.clone(); mapping["verify"]["prompt"]=json!(instruction);
         let id=start(&f,"trial",&mapping).await;
         if instruction=="force-fail" {
-            let plan=wait(&f,&id,"plan").await; decide(&f,&id,&plan,true).await;
             let approval=wait(&f,&id,"approval").await; decide(&f,&id,&approval,true).await;
         }
         assert_eq!(wait(&f,&id,"done").await["result"]["verify"]["state"],expected);

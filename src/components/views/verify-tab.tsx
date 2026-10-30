@@ -3,7 +3,7 @@ import { Check, CircleAlert, CircleX, Circle, Loader, ShieldCheck, RotateCcw, Gl
 import type { Verify, VerifyStep, ZTask } from "@/data/types";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty";
-import { decideVerify, reverify } from "@/store/actions";
+import { reverify } from "@/store/actions";
 import { VERIFY_LABEL, verifyBusy, verifyDone } from "@/data/verify";
 import { relTime } from "@/lib/time";
 import { navigate } from "@/lib/route";
@@ -11,7 +11,7 @@ import { navigate } from "@/lib/route";
 const PHASES: { key: Verify["state"][]; label: string }[] = [
   { key: ["preparing"], label: "准备环境" },
   { key: ["selfcheck"], label: "自检" },
-  { key: ["planning", "awaiting-plan"], label: "测试计划" },
+  { key: ["planning"], label: "测试计划" },
   { key: ["running"], label: "端到端验证" },
 ];
 
@@ -77,15 +77,7 @@ export function VerifyTab({ task }: { task: ZTask }) {
           )}
         </section>
 
-        {busy && v.state !== "awaiting-plan" && <Progress v={v} />}
-
-        {v.state === "awaiting-plan" && (
-          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3">
-            <p className="min-w-0 flex-1 text-sm text-foreground">测试计划已就绪。确认后开始跑端到端验证。</p>
-            <Button variant="ghost" size="sm" onClick={() => decideVerify(task.id, false)}>跳过验证</Button>
-            <Button size="sm" onClick={() => decideVerify(task.id, true)}>开始验证</Button>
-          </div>
-        )}
+        {busy && <Progress v={v} />}
 
         {v.state === "unverified" && !v.steps.length && (
           <button className="text-sm text-accent underline-offset-2 hover:underline" onClick={() => navigate({ name: "prefs", section: "repos" } as any)}>去产品里补充验证说明</button>

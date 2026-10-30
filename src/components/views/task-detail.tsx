@@ -73,7 +73,7 @@ function Actions({ task }: { task: ZTask }) {
         <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">按 <Kbd keys={["esc"]} /> 或点输入框的停止键可以随时停下</span>
       )}
       {s === "waiting" && (
-        <span className="inline-flex items-center gap-1.5 text-sm text-warning"><TriangleAlert className="size-4" />{run.verify?.state === "awaiting-plan" ? "测试计划等你确认" : "有一条命令等你审批"}</span>
+        <span className="inline-flex items-center gap-1.5 text-sm text-warning"><TriangleAlert className="size-4" />有一条命令等你审批</span>
       )}
       {s === "stopped" && (
         <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">已停止，已有的改动都保留。发消息或点「继续」接着做</span>

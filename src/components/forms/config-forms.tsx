@@ -1,3 +1,4 @@
+import { useModels, selection } from "@/data/models";
 import { useEffect, useId, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ChevronRight, Eye, EyeOff, ShieldAlert, ShieldCheck, Wand, Minus, Plus } from "@/lib/icons";
@@ -226,6 +227,14 @@ const SANDBOX: { value: SandboxMode; title: string; desc: string; tone?: "rec" |
 
 export function CodexForm({ value, onChange, test, onTest, onDemo }: { value: CodexConfig; onChange: (p: Partial<CodexConfig>) => void; test: ReturnType<typeof useConnTest>["state"]; onTest: () => void; onDemo?: () => void }) {
   const platform = useApp((s) => s.platform);
+  const catalog = useModels(value.cliPath);
+  const selected = catalog.models.find(m => m.model === value.model) ?? catalog.models.find(m => m.isDefault) ?? catalog.models[0];
+  useEffect(() => {
+    if (selected) {
+      const next = selection(selected, value.effort);
+      if (next.model !== value.model || next.effort !== value.effort) onChange(next);
+    }
+  }, [selected, value.model, value.effort, onChange]);
   return (
     <div className="space-y-6">
       <p className="rounded-lg bg-muted px-3 py-2.5 text-sm leading-5 text-muted-foreground">
@@ -244,21 +253,16 @@ export function CodexForm({ value, onChange, test, onTest, onDemo }: { value: Co
       >
         {({ id }) => <Input id={id} value={value.cliPath} onChange={(e: any) => onChange({ cliPath: e.target.value, connected: false })} placeholder={platform === "mac" ? "/usr/local/bin/codex" : "C:\\Users\\you\\AppData\\Roaming\\npm\\codex.cmd"} className="font-mono text-xs" spellCheck={false} />}
       </Field>
+      {catalog.error && <p role="alert">{catalog.error}</p>}
       <div className="grid gap-5 sm:grid-cols-2">
-        <Field label="模型">
-          {({ id }) => (
-            <Select
-              id={id}
-              value={value.model}
-              onChange={(v: any) => onChange({ model: v })}
-              options={[
-                { value: "Codex · 标准", label: "Codex · 标准", hint: "速度与质量均衡" },
-                { value: "Codex · 高推理", label: "Codex · 高推理", hint: "复杂问题，更慢更贵" },
-                { value: "Codex · 快速", label: "Codex · 快速", hint: "简单修改，更快" },
-              ]}
-            />
-          )}
+        <Field label="默认模型">
+          {({ id }) => <Select id={id} value={value.model} loading={catalog.loading} disabled={!catalog.models.length} placeholder={catalog.error ? "加载失败" : "暂无可用模型"} onChange={(v: any) => onChange(selection(catalog.models.find(m => m.model === v)!, value.effort))} options={catalog.models.map((m) => ({ value: m.model, label: m.displayName }))} />}
         </Field>
+        <Field label="思考强度">
+          {({ id }) => <Select id={id} value={value.effort} loading={catalog.loading} disabled={!selected?.supportedReasoningEfforts.length} placeholder={catalog.error ? "加载失败" : "暂无可用强度"} onChange={(v: any) => onChange({ effort: v })} options={(selected?.supportedReasoningEfforts ?? []).map((e) => ({ value: e.reasoningEffort, label: e.reasoningEffort }))} />}
+        </Field>
+      </div>
+      <div className="grid gap-5 sm:grid-cols-2">
         <Field label="同时执行的任务数" hint="超过上限的任务会排队。">
           {() => (
             <div className="inline-flex h-8 items-center gap-1 self-start rounded-md border border-border-strong bg-card p-0.5">
@@ -269,10 +273,6 @@ export function CodexForm({ value, onChange, test, onTest, onDemo }: { value: Co
           )}
         </Field>
       </div>
-
-      <Field label="验证前确认测试计划" hint={value.confirmPlan ? "改完代码后，AI 会先给出测试计划，等你确认再开始验证。" : "改完代码后自动验证，不用等你确认。"}>
-        {() => <Toggle checked={!!value.confirmPlan} onChange={(v) => onChange({ confirmPlan: v })} label="验证前确认测试计划" />}
-      </Field>
 
       <fieldset>
         <legend className="mb-2 text-sm font-medium text-foreground">沙盒与审批</legend>

@@ -1,3 +1,4 @@
+import { modelText } from "@/data/models";
 import { AnimatePresence, motion } from "motion/react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -265,7 +266,7 @@ export function Timeline({ task }: { task: ZTask }) {
           <dt className="text-muted-foreground">仓库</dt>
           <dd className="truncate font-mono text-xs leading-5 text-foreground">{task.repoId}</dd>
           <dt className="text-muted-foreground">模型</dt>
-          <dd className="text-foreground">{config.codex.model}</dd>
+          <dd className="text-foreground">{modelText(config.codex)}</dd>
           <dt className="text-muted-foreground">权限</dt>
           <dd className="text-foreground">{SANDBOX_LABEL[config.codex.sandbox]}</dd>
         </dl>
@@ -308,7 +309,7 @@ export function Timeline({ task }: { task: ZTask }) {
                 {waiting ? <ShieldAlert className="size-3.5 text-warning" /> : <span className="dot-pulse size-2 rounded-full bg-accent" />}
               </span>
               {waiting ? (
-                <span className="text-sm text-warning">{run.verify?.state === "awaiting-plan" ? "等待你确认测试计划" : "等待你审批后继续"}</span>
+                <span className="text-sm text-warning">等待你审批后继续</span>
               ) : run.state === "queued" ? (
                 <ShimmerText className="text-sm">排队中，等待空闲的 Codex 会话…</ShimmerText>
               ) : (

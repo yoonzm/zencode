@@ -174,7 +174,7 @@ export interface CodexConfig {
   model: string;
   sandbox: SandboxMode;
   concurrency: number;
-  confirmPlan?: boolean;
+  effort: string;
   connected: boolean;
 }
 export interface RepoLink {

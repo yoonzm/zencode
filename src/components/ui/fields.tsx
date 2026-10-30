@@ -9,7 +9,7 @@ import { Select as ShadSelect, SelectContent, SelectItem, SelectTrigger, SelectV
 import { ToggleGroup, ToggleGroupItem } from "./primitives/toggle-group";
 import { Popover, PopoverContent, PopoverTrigger } from "./primitives/popover";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "./primitives/command";
-import { Check, ChevronDown, RefreshCw } from "@/lib/icons";
+import { Check, ChevronDown, Loader, RefreshCw } from "@/lib/icons";
 
 type InputProps = Omit<React.ComponentProps<"input">, "ref"> & { invalid?: boolean };
 
@@ -72,11 +72,11 @@ export interface Opt<T extends string> {
 }
 
 /** 下拉选择：shadcn Select（Radix）。 */
-export function Select<T extends string>({ value, onChange, options, id, className, placeholder = "请选择", invalid }: { value: T | ""; onChange: (v: T) => void; options: Opt<T>[]; id?: string; className?: string; placeholder?: string; invalid?: boolean }) {
+export function Select<T extends string>({ value, onChange, options, id, className, placeholder = "请选择", invalid, loading, disabled }: { value: T | ""; onChange: (v: T) => void; options: Opt<T>[]; id?: string; className?: string; placeholder?: string; invalid?: boolean; loading?: boolean; disabled?: boolean }) {
   return (
-    <ShadSelect value={value || undefined} onValueChange={(v) => onChange(v as T)}>
-      <SelectTrigger id={id} aria-invalid={invalid || undefined} className={cn("h-8 w-full px-2.5 text-sm data-[size=default]:h-8", className)}>
-        <SelectValue placeholder={placeholder}>{options.find((o) => o.value === value)?.label}</SelectValue>
+    <ShadSelect value={options.length ? value || undefined : undefined} onValueChange={(v) => onChange(v as T)} disabled={disabled || loading}>
+      <SelectTrigger id={id} aria-invalid={invalid || undefined} aria-busy={loading || undefined} className={cn("h-8 w-full px-2.5 text-sm data-[size=default]:h-8", className)}>
+        {loading ? <span role="status" className="inline-flex items-center gap-2"><Loader aria-hidden className="size-3.5 motion-safe:animate-spin" />正在加载…</span> : <SelectValue placeholder={placeholder}>{options.find((o) => o.value === value)?.label}</SelectValue>}
       </SelectTrigger>
       <SelectContent position="popper" sideOffset={4} className="rounded-lg border-border bg-popover shadow-pop">
         {options.map((o) => (

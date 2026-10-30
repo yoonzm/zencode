@@ -1,3 +1,4 @@
+import { modelText } from "@/data/models";
 import { flushPrefs } from "@/store/state";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -27,7 +28,7 @@ const STEPS = [
 const BLANK: AppConfig = {
   zentao: { baseUrl: "", edition: "biz", auth: "token", account: "", secret: "", scope: "mine", syncIntervalMin: 5, autoRun: true, connected: false },
   gitlab: { baseUrl: "", token: "", targetBranch: "main", mrDraft: true, connected: false },
-  codex: { cliPath: "", model: "Codex · 标准", sandbox: "workspace-write", concurrency: 3, connected: false },
+  codex: { cliPath: "", model: "", effort: "", sandbox: "workspace-write", concurrency: 3, connected: false },
   mappings: [],
 };
 
@@ -86,7 +87,7 @@ export function Wizard() {
   const summary = [
     { id: "zentao", label: "禅道", ok: draft.zentao.connected, detail: draft.zentao.connected ? draft.zentao.baseUrl.replace(/^https?:\/\//, "") : "稍后配置" },
     { id: "gitlab", label: "GitLab", ok: draft.gitlab.connected, detail: draft.gitlab.connected ? draft.gitlab.baseUrl.replace(/^https?:\/\//, "") : "稍后配置" },
-    { id: "codex", label: "Codex", ok: draft.codex.connected, detail: draft.codex.connected ? `${draft.codex.model} · 并发 ${draft.codex.concurrency}` : "稍后配置" },
+    { id: "codex", label: "Codex", ok: draft.codex.connected, detail: draft.codex.connected ? `${modelText(draft.codex)} · 并发 ${draft.codex.concurrency}` : "稍后配置" },
     { id: "repos", label: "仓库映射", ok: mapOk, detail: mapOk ? `${draft.mappings.length} 个产品已映射` : "稍后配置" },
   ];
 

@@ -18,6 +18,7 @@ readline.createInterface({input: process.stdin}).on('line', line => {
     send({id: r.id, result: {thread: {id: 'fixture'}}});
   }
   if (m === 'turn/start') {
+    if (p.model !== 'fixture-model' || p.effort !== 'ultra') throw Error('Model/effort not forwarded');
     const id = `turn-${++seq}`, prompt = p.input[0].text;
     if (prompt.includes('private-test-token')) throw Error('Credential leaked');
     send({id: r.id, result: {turn: {id}}});

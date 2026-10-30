@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { ArrowUp, Cpu, Play, X } from "@/lib/icons";
+import { ArrowUp, Play, X } from "@/lib/icons";
 import type { ZTask } from "@/data/types";
-import { SANDBOX_LABEL } from "@/data/types";
 import { store, useApp } from "@/store/state";
 import { continueRun, sendInstruction, startRun, stopRun } from "@/store/actions";
-import { Kbd } from "@/components/ui/kbd";
+import { AccessPicker, ModelPicker } from "./codex-pickers";
 import { BeamFrame } from "@/components/magic/effects";
 
 const PLACEHOLDER: Record<string, string> = {
@@ -32,7 +31,6 @@ export function Composer({ task }: { task: ZTask }) {
   const [ref, setRef] = useState<string | undefined>();
   const area = useRef<HTMLTextAreaElement>(null);
   const prefill = useApp((s) => s.prefill);
-  const config = useApp((s) => s.config);
   const state = task.run.state;
   const idle = state === "idle";
 
@@ -142,15 +140,10 @@ export function Composer({ task }: { task: ZTask }) {
               }}
               className="block max-h-40 min-h-[40px] w-full resize-none bg-transparent px-3 py-2.5 text-sm leading-5 text-foreground outline-none placeholder:text-subtle-foreground"
             />
-            <div className="flex items-center gap-2 px-2 pb-2 pl-3">
-              <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                <Cpu className="size-3.5 shrink-0" />
-                <span className="truncate">{config.codex.model} · {SANDBOX_LABEL[config.codex.sandbox]}</span>
-              </span>
-              <span className="ml-auto hidden items-center gap-1 text-xs text-subtle-foreground sm:inline-flex">
-                <Kbd keys={["enter"]} /> 发送
-                <Kbd keys={["shift", "enter"]} className="ml-1" /> 换行
-              </span>
+            <div className="flex items-center gap-1 px-2 pb-2">
+              <AccessPicker />
+              <span className="ml-auto" />
+              <ModelPicker />
               <button
                 onClick={stoppable ? () => stopRun(task.id) : send}
                 disabled={!stoppable && !canSend}
