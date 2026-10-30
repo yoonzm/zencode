@@ -7,6 +7,7 @@ import { reverify } from "@/store/actions";
 import { VERIFY_LABEL, verifyBusy, verifyDone } from "@/data/verify";
 import { relTime } from "@/lib/time";
 import { navigate } from "@/lib/route";
+import { VerificationShots } from "./verification-shots";
 
 const PHASES: { key: Verify["state"][]; label: string }[] = [
   { key: ["preparing"], label: "准备环境" },
@@ -83,6 +84,8 @@ export function VerifyTab({ task }: { task: ZTask }) {
           <button className="text-sm text-accent underline-offset-2 hover:underline" onClick={() => navigate({ name: "prefs", section: "repos" } as any)}>去产品里补充验证说明</button>
         )}
 
+
+        {!busy && <VerificationShots key={`${task.id}:${v.finishedAt ?? v.state}`} id={task.id} />}
 
         {v.steps.length > 0 && (
           <section className="space-y-2">

@@ -152,7 +152,7 @@ export function decodeTask(t: ZTask): ZTask {
   if ((t.run.state as string) === "paused") t.run.state = "stopped";
   if (!t.manual) t.description = t.description.map(b => b.text ? { ...b, text: new DOMParser().parseFromString(b.text, "text/html").body.textContent || "" } : b);
   const raw = (t.run as any).rawDiff as string | undefined;
-  if (raw) t.run.files = raw.split(/^diff --git /m).slice(1).map(part => {
+  if (raw != null) t.run.files = raw.split(/^diff --git /m).slice(1).map(part => {
     const lines = part.split("\n");
     const plus = lines.find(l => l.startsWith("+++ b/"));
     const minus = lines.find(l => l.startsWith("--- a/"));
@@ -160,6 +160,7 @@ export function decodeTask(t: ZTask): ZTask {
     const path = plus || minus ? (plus || minus)!.slice(6).replace(/\t.*$/, "") : header.slice(header.lastIndexOf(" b/") + 3);
     return { ...parsePatch(path, part.includes("new file mode") ? "added" : "modified", part), manual: ((t.run as any).manualFiles ?? []).includes(path) };
   });
+  t.run.files = (t.run.files ?? []).filter(f => f.path !== ".verification" && !f.path.startsWith(".verification/"));
   return t;
 }
 

@@ -9,6 +9,7 @@ pub mod runtime;
 pub mod services;
 pub mod storage;
 mod verification;
+mod verification_shots;
 mod verification_tools;
 pub mod update_feed;
 pub type Result<T> = std::result::Result<T, String>;

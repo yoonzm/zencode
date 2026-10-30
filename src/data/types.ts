@@ -98,6 +98,7 @@ export type VerifyMode = "ui" | "api" | "checks";
 export interface VerifyCheck { name: string; status: "passed" | "failed" | "skipped"; detail?: string }
 export interface VerifyStep { id: string; title: string; expect: string; status: "pending" | "running" | "passed" | "failed"; note?: string; /** 录屏里对应的秒数 */ at?: number }
 export interface VerifyLog { kind: "console" | "network" | "api" | "cli"; level: "info" | "error"; text: string }
+export interface Shot { id: string; path: string; label: string; failed?: boolean }
 export interface Verify {
   state: VerifyState;
   mode: VerifyMode;
@@ -107,6 +108,7 @@ export interface Verify {
   checks: VerifyCheck[];
   steps: VerifyStep[];
   recording?: { seconds: number };
+  shots?: Shot[];
   logs: VerifyLog[];
   /** 一句话结论；未验证 / 失败时说明原因 */
   summary?: string;

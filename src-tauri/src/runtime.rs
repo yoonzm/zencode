@@ -474,6 +474,14 @@ impl Runtime {
                 .await?;
                 Ok(Value::Null)
             }
+            "verificationShots" | "verificationShot" => {
+                let task = self.task(text(&args, "id")).await?;
+                if op == "verificationShots" {
+                    crate::verification_shots::list(&task)
+                } else {
+                    crate::verification_shots::read(&task, text(&args, "path")).map(|s| json!(s))
+                }
+            }
             "workdirTarget" => {
                 let task = self.task(text(&args, "id")).await?;
                 let raw = text(&task["run"], "worktree");
@@ -1039,7 +1047,7 @@ impl Runtime {
             return Err("任务工作目录尚未就绪".into());
         }
         let cwd = PathBuf::from(text(&t["run"], "worktree"));
-        command("git", &["add", "-N", "--", "."], Some(&cwd)).await?;
+        command("git", &["add", "-N", "--", ".", ":(top,exclude).verification"], Some(&cwd)).await?;
         let diff = command(
             "git",
             &[
@@ -1050,6 +1058,8 @@ impl Runtime {
                 "--no-color",
                 text(&t["run"], "base"),
                 "--",
+                ".",
+                ":(top,exclude).verification",
             ],
             Some(&cwd),
         )
@@ -1107,7 +1117,7 @@ impl Runtime {
             if diff.is_empty() {
                 return Err("没有可提交的代码变更".into());
             }
-            command("git", &["add", "--all"], Some(&cwd)).await?;
+            stage_business_changes(&cwd, text(run, "base")).await?;
             if !command("git", &["diff", "--cached", "--name-only"], Some(&cwd))
                 .await?
                 .is_empty()
@@ -1274,9 +1284,48 @@ pub fn validate_remote(remote: &str, project: &Value) -> Result<()> {
     }
     Ok(())
 }
+async fn stage_business_changes(cwd: &std::path::Path, base: &str) -> Result<()> {
+    if !command("git", &["diff", "--name-only", base, "HEAD", "--", ".verification"], Some(cwd)).await?.is_empty() {
+        return Err("任务分支已提交验证产物，请先将 .verification 从提交中移除后再创建 MR。".into());
+    }
+    // Remove evidence staged by older versions without deleting local files.
+    command("git", &["reset", "-q", "HEAD", "--", ".verification"], Some(cwd)).await?;
+    command("git", &["add", "--all", "--", ".", ":(top,exclude).verification"], Some(cwd)).await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn verification_artifacts_stay_local_and_out_of_diff_and_commit() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().join("repo");
+        std::fs::create_dir_all(&cwd).unwrap();
+        for args in [vec!["init"], vec!["config","user.email","test@example.com"], vec!["config","user.name","Test"], vec!["commit","--allow-empty","-m","base"]] {
+            command("git", &args, Some(&cwd)).await.unwrap();
+        }
+        let base = command("git", &["rev-parse","HEAD"], Some(&cwd)).await.unwrap();
+        std::fs::create_dir_all(cwd.join(".verification/bug-1")).unwrap();
+        std::fs::write(cwd.join(".verification/bug-1/step.png"), b"png").unwrap();
+        std::fs::write(cwd.join(".verification/bug-1/log.json"), b"{}").unwrap();
+        std::fs::write(cwd.join("app.ts"), b"export const fixed = true;\n").unwrap();
+        command("git", &["add","--all"], Some(&cwd)).await.unwrap();
+        Storage::new(root.path()).save(&json!({"prefs":{},"tasks":[{"id":"bug-1","run":{"state":"review","worktree":cwd,"base":base}}]})).unwrap();
+        let rt = Runtime::new(root.path().into(), Arc::new(|_,_| {})).unwrap();
+        let diff = rt.diff("bug-1").await.unwrap();
+        assert!(diff.contains("app.ts"));
+        assert!(!diff.contains(".verification"));
+        stage_business_changes(&cwd, &base).await.unwrap();
+        assert_eq!(command("git", &["diff","--cached","--name-only"], Some(&cwd)).await.unwrap().trim(), "app.ts");
+        assert!(cwd.join(".verification/bug-1/step.png").exists());
+        command("git", &["commit","-m","fix"], Some(&cwd)).await.unwrap();
+        assert_eq!(command("git", &["diff","--name-only",&base,"HEAD"], Some(&cwd)).await.unwrap().trim(), "app.ts");
+        assert!(rt.diff("bug-1").await.unwrap().contains("app.ts"));
+        command("git", &["add",".verification"], Some(&cwd)).await.unwrap();
+        command("git", &["commit","-m","accidental evidence"], Some(&cwd)).await.unwrap();
+        assert!(stage_business_changes(&cwd, &base).await.is_err());
+    }
     #[tokio::test]
     async fn updater_cancels_queue_and_persists_only_automatic_resume_candidates() {
         let root = tempfile::tempdir().unwrap();

@@ -34,7 +34,7 @@ pub fn prompt(phase: &str, instructions: &str, plan: &Value) -> String {
     let action = if phase == "planning" {
         "只制定测试计划，不执行验证，不修改代码。所有步骤 status 为 pending。"
     } else {
-        "执行已确认的测试计划，不修改业务代码。只能报告实际执行的结果。缺少环境、凭据或工具时必须标为 unverified；禁止虚构成功、证据或录屏。"
+        "执行已确认的测试计划，不修改业务代码。只能报告实际执行的结果。缺少环境、凭据或工具时必须标为 unverified；禁止虚构成功、证据或录屏。所有验证截图、日志、临时脚本统一存入任务工作区的 .verification/ 目录，不得加入 Git 暂存区或提交。UI 验证在关键步骤和失败处保存真实 PNG 截图。最终 JSON 增加 shots 数组，每项包含 path（工作区相对路径）、label（截图说明）、failed（是否未达预期）；只列出实际生成的截图，没有截图时返回空数组。"
     };
     format!("{action}\n{BROWSER_POLICY}\n产品验证说明：{instructions}\n已有计划：{plan}\n最终回复只输出 JSON：{{\"state\":\"unverified|passed|failed\",\"mode\":\"checks|api|ui\",\"where\":\"local|server\",\"target\":\"实际地址（未知则留空）\",\"summary\":\"结论及限制\",\"steps\":[{{\"id\":\"1\",\"title\":\"操作\",\"expect\":\"预期\",\"status\":\"pending|passed|failed\",\"note\":\"实际结果与证据（计划阶段留空）\"}}]}}。禁止推送、创建 MR。")
 }
@@ -46,6 +46,12 @@ pub fn report(response: &str, planning: bool, logs: Value) -> Value {
     let mut result = empty("unverified", "未收到有效验证报告，请查看执行过程。");
     result["logs"] = logs;
     let Some(v) = parsed else { return result; };
+    if !planning {
+        result["shots"] = json!(v["shots"].as_array().into_iter().flatten()
+            .filter(|s| !text(s, "path").is_empty())
+            .map(|s| json!({"path":text(s,"path"),"label":text(s,"label"),"failed":s["failed"] == true}))
+            .collect::<Vec<_>>());
+    }
     for key in ["summary", "target"] {
         if v[key].is_string() { result[key] = v[key].clone(); }
     }

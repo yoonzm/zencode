@@ -12,16 +12,18 @@ interface ModalProps {
   size?: "sm" | "md" | "lg";
   className?: string;
   hideClose?: boolean;
+  onCloseAutoFocus?: (event: Event) => void;
 }
 
 const SIZE = { sm: "sm:max-w-sm", md: "sm:max-w-md", lg: "sm:max-w-xl" };
 
 /** 弹窗：shadcn Dialog（Radix）。标题缺省时用隐藏标题满足无障碍要求。 */
-export function Modal({ open, onClose, title, description, children, footer, size = "md", className, hideClose }: ModalProps) {
+export function Modal({ open, onClose, title, description, children, footer, size = "md", className, hideClose, onCloseAutoFocus }: ModalProps) {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent
         showCloseButton={!hideClose}
+        onCloseAutoFocus={onCloseAutoFocus}
         aria-describedby={description ? undefined : undefined}
         className={cn("gap-0 rounded-xl border-border bg-popover p-0 shadow-pop", SIZE[size], className)}
       >
