@@ -1,3 +1,4 @@
+import { tickReports } from "@/store/report";
 import { useEffect } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useApp } from "@/store/state";
@@ -26,6 +27,12 @@ export function AppShell() {
     const interval = window.setInterval(() => { void checkUpdate(); }, 6 * 3600_000);
     return () => { clearTimeout(first); clearInterval(interval); };
   }, [hydrated, autoUpdate, channel]);
+  useEffect(() => {
+    if (!hydrated) return;
+    tickReports();
+    const h = window.setInterval(() => tickReports(), 30_000);
+    return () => window.clearInterval(h);
+  }, [hydrated]);
   const route = useRoute();
   const open = useApp((s) => s.sidebarOpen);
   const compact = useMedia("(max-width: 859px)");

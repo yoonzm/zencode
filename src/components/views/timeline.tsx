@@ -14,6 +14,7 @@ import { ShimmerText } from "@/components/magic/effects";
 import { decideApproval, focusDiffFile, startRun } from "@/store/actions";
 import { SANDBOX_LABEL } from "@/data/types";
 import { useApp } from "@/store/state";
+import { parseVerificationMessage, isStreamingVerificationMessage } from "@/lib/verification-message";
 
 type Filter = "all" | "talk" | "cmd" | "edit";
 
@@ -47,8 +48,33 @@ function Paragraphs({ text }: { text: string }) {
   );
 }
 
-function CommandBlock({ e, defaultOpen }: { e: Extract<RunEvent, { kind: "command" }>; defaultOpen: boolean }) {
-  const [open, setOpen] = useState(defaultOpen);
+function AgentMessage({ text }: { text: string }) {
+  const report = parseVerificationMessage(text);
+  if (!report && !isStreamingVerificationMessage(text)) return <Paragraphs text={text} />;
+  const plan = report && report.steps.length > 0 && report.steps.every(step => step.status === "pending");
+  const labels: Record<string, string> = { pending: "待执行", running: "执行中", passed: "通过", failed: "失败", unverified: "未验证", "awaiting-plan": "待确认" };
+  return <div className="space-y-3 rounded-lg border border-border bg-card p-3 text-sm">
+    <p className="font-medium">{report ? plan ? "验证计划" : `验证结果 · ${labels[report.state]}` : "验证记录整理中"}</p>
+    {report && <>
+      <Paragraphs text={report.summary} />
+      {report.target && <p className="break-all text-xs text-muted-foreground">测试环境：{report.target}</p>}
+      <ol className="space-y-3">
+        {report.steps.map((step, i) => <li key={i} className="space-y-1">
+          <p className="font-medium">{i + 1}. {step.title}<span className={cn("ml-2 text-xs font-normal", step.status === "failed" ? "text-danger" : "text-muted-foreground")}>{labels[step.status]}</span></p>
+          {step.expect && <p className="text-xs leading-5 text-muted-foreground">预期：{step.expect}</p>}
+          {step.note && <p className="text-xs leading-5 text-muted-foreground">结果：{step.note}</p>}
+        </li>)}
+      </ol>
+    </>}
+    <details>
+      <summary className="cursor-pointer text-xs text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/60">查看原始数据</summary>
+      <pre className="selectable mt-2 max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-muted p-2 text-xs">{text}</pre>
+    </details>
+  </div>;
+}
+
+function CommandBlock({ e }: { e: Extract<RunEvent, { kind: "command" }> }) {
+  const [open, setOpen] = useState(false);
   const ok = e.exit === 0;
   const hasOut = !!e.output && e.output.trim().length > 0;
   return (
@@ -77,13 +103,13 @@ function CommandBlock({ e, defaultOpen }: { e: Extract<RunEvent, { kind: "comman
   );
 }
 
-const Event = memo(function Event({ e, task, last, latest }: { e: RunEvent; task: ZTask; last: boolean; latest: boolean }) {
+const Event = memo(function Event({ e, task, last }: { e: RunEvent; task: ZTask; last: boolean }) {
   const canDecide = task.run.state === "waiting";
   switch (e.kind) {
     case "message":
       return (
         <Rail icon={<Sparkles className="size-3.5 text-accent" />} last={last} at={e.at}>
-          <Paragraphs text={e.text} />
+          <AgentMessage text={e.text} />
         </Rail>
       );
     case "plan": {
@@ -125,7 +151,7 @@ const Event = memo(function Event({ e, task, last, latest }: { e: RunEvent; task
     case "command":
       return (
         <Rail icon={<Terminal className="size-3.5" />} last={last} at={e.at}>
-          <CommandBlock e={e} defaultOpen={e.exit !== 0 || (latest && !!e.output)} />
+          <CommandBlock e={e} />
         </Rail>
       );
     case "edit":
@@ -214,7 +240,7 @@ function activity(task: ZTask): string {
 }
 
 export function Timeline({ task }: { task: ZTask }) {
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<Filter>("talk");
   const config = useApp((s) => s.config);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
@@ -300,7 +326,7 @@ export function Timeline({ task }: { task: ZTask }) {
       <div ref={scroller} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-5 pb-4 pt-1" tabIndex={-1}>
         <ol aria-label="执行事件" className="mx-auto max-w-3xl">
           {events.map((e, i) => (
-            <Event key={e.id} e={e} task={task} last={i === events.length - 1 && !live && !waiting} latest={i === events.length - 1} />
+            <Event key={e.id} e={e} task={task} last={i === events.length - 1 && !live && !waiting} />
           ))}
           {events.length === 0 && <li className="py-8 text-center text-sm text-muted-foreground">这个类别下还没有事件</li>}
           {(live || waiting) && (

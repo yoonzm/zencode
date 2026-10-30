@@ -1,3 +1,4 @@
+mod reports;
 mod feishu;
 mod manual;
 pub mod codex;

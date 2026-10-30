@@ -1,6 +1,6 @@
 [package]
 name = "zencode"
-version = "0.2.3"
+version = "0.2.4"
 description = "ZenCode desktop application"
 authors = ["yoonzm"]
 edition = "2021"

@@ -1,5 +1,6 @@
 // 图标层：统一从 lucide-react 导出，业务代码只依赖这里的名字。
 export {
+  FileText,
   Search,
   Bug,
   Lightbulb,

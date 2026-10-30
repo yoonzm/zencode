@@ -54,6 +54,34 @@ export interface Feishu {
   result: boolean;
 }
 
+export interface ReportCfg {
+  enabled: boolean;
+  /** HH:mm */
+  time: string;
+  /** 周报在周几发，1 = 周一 … 7 = 周日 */
+  weekday: number;
+  prompt: string;
+  /** 开启的时间，只发开启之后才到点的那一次 */
+  since?: number;
+}
+export interface ReportLog {
+  id: string;
+  kind: "daily" | "weekly";
+  at: number;
+  /** 日期标识，防止同一天重复发 */
+  key?: string;
+  manual: boolean;
+  items: string[];
+  stats: string;
+  /** sent：已发到飞书；skipped：这段时间没有进展 */
+  result: "sent" | "skipped";
+}
+export interface Reports {
+  daily: ReportCfg;
+  weekly: ReportCfg;
+  log: ReportLog[];
+}
+
 export interface Prefs {
   theme: ThemePref;
   density: "comfortable" | "compact";
@@ -64,6 +92,7 @@ export interface Prefs {
   setupDone: boolean;
   notify: Notify;
   feishu: Feishu;
+  reports: Reports;
   cleanupDays: number;
   autoUpdate: boolean;
   channel: "stable" | "beta";
@@ -114,6 +143,11 @@ const defaultPrefs: Prefs = {
   setupDone: false,
   notify: { done: true, approval: true, failed: true, sound: false },
   feishu: { enabled: false, webhook: "", secret: "", attention: true, result: true },
+  reports: {
+    daily: { enabled: false, time: "18:00", weekday: 5, prompt: "根据今天的任务进展写日报，2 到 5 条，每条一句话：做了什么、结果如何。有失败或卡住的单独写一条。" },
+    weekly: { enabled: false, time: "18:00", weekday: 5, prompt: "根据本周的任务进展写周报，2 到 5 条，按重要程度排序，合并同类项，每条一句话。最后一条写下周计划，没有就不写。" },
+    log: [],
+  },
   cleanupDays: 30,
   autoUpdate: true,
   channel: "stable",
@@ -152,7 +186,7 @@ export function useApp<S>(selector: (s: AppState) => S): S {
 }
 
 // ── 持久化 ────────────────────────────────────────────────
-const PERSIST_KEYS: (keyof Prefs)[] = ["theme", "density", "sidebarOpen", "listWidth", "group", "sort", "setupDone", "notify", "feishu", "cleanupDays", "autoUpdate", "channel", "config"];
+const PERSIST_KEYS: (keyof Prefs)[] = ["theme", "density", "sidebarOpen", "listWidth", "group", "sort", "setupDone", "notify", "feishu", "reports", "cleanupDays", "autoUpdate", "channel", "config"];
 let lastPersisted = "";
 let hydrated = false;
 export async function hydrate() {
@@ -160,6 +194,7 @@ export async function hydrate() {
   // Only supported preferences are restored; obsolete prototype platform overrides are ignored.
   const prefs = Object.fromEntries(PERSIST_KEYS.filter(k => k in (data.prefs ?? {})).map(k => [k, data.prefs[k]]));
   prefs.feishu = { ...defaultPrefs.feishu, ...(prefs.feishu ?? {}) };
+  prefs.reports = { daily: { ...defaultPrefs.reports.daily, ...prefs.reports?.daily }, weekly: { ...defaultPrefs.reports.weekly, ...prefs.reports?.weekly }, log: prefs.reports?.log ?? [] };
   prefs.cleanupDays = [7, 30, 60, 90].includes(prefs.cleanupDays) ? prefs.cleanupDays : 30;
   prefs.autoUpdate = prefs.autoUpdate !== false;
   prefs.channel = prefs.channel === "beta" ? "beta" : "stable";

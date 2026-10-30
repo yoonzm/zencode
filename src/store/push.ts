@@ -1,7 +1,7 @@
 import { taskRef } from "@/lib/task";
 import type { Run, ZTask } from "@/data/types";
 
-export type PushKind = "attention" | "result";
+export type PushKind = "attention" | "result" | "report";
 export type PushTone = "danger" | "warn" | "success" | "info";
 
 export interface FeishuCard {

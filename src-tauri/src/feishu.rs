@@ -23,7 +23,7 @@ fn signature(secret: &str, timestamp: i64) -> String {
     STANDARD.encode(mac.finalize().into_bytes())
 }
 
-fn card(title: &str, tone: &str, lines: Vec<(&str, String)>) -> Value {
+pub(crate) fn card(title: &str, tone: &str, lines: Vec<(&str, String)>) -> Value {
     let mut elements: Vec<Value> = lines.into_iter().map(|(label, value)| json!({
         "tag":"div", "text":{"tag":"plain_text","content":format!("{label}：{}", value.chars().take(600).collect::<String>())}
     })).collect();

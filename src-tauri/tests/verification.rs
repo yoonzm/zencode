@@ -41,6 +41,14 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   const id='turn-'+(++seq), prompt=p.input[0].text;
   require('node:fs').appendFileSync('prompts.log',JSON.stringify(prompt)+'\n');
   send({id:r.id,result:{turn:{id}}});
+  if(require('node:fs').existsSync('live-diff.txt')) return;
+  if(prompt.startsWith('live-diff-')) {
+   require('node:fs').writeFileSync('live-diff.txt','visible before review\n');
+   const type=prompt.split('\n')[0].slice('live-diff-'.length);
+   if(type==='turn') send({method:'turn/completed',params:{turn:{id,status:'completed'}}});
+   else send({method:'item/completed',params:{item:{id:'edit',type,command:'edit',exitCode:0}}});
+   return;
+  }
   if(prompt==='stop-fixture') return;
   if(prompt==='queue-fixture') { setTimeout(()=>send({method:'turn/completed',params:{turn:{id,status:'completed'}}}),500); return; }
   const plan=prompt.includes('不执行验证');
@@ -80,6 +88,25 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
     let rt = Runtime::new(root, Arc::new(|_,_| {})).unwrap();
     let config = json!({"codex":{"cliPath":cli,"effort":"ultra","model":"fixture-model"},"mappings":[{"product":"P","repos":[{"repo":"team/app","branch":"main"}],"verify":{"enabled":true,"prompt":"Check fixture"}}]});
     (dir,rt,config)
+}
+
+#[tokio::test]
+async fn diff_is_published_during_edits_and_before_verification() {
+    for trigger in ["fileChange", "commandExecution", "turn"] {
+        let (_dir, rt, config) = fixture().await;
+        rt.call("start", json!({"id":"bug-1","config":config,"instruction":format!("live-diff-{trigger}")})).await.unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                let task = rt.data.lock().await["tasks"][0].clone();
+                if task["run"]["rawDiff"].as_str().unwrap_or("").contains("+visible before review") {
+                    assert_eq!(task["run"]["state"], "running");
+                    if trigger != "turn" || task["run"]["verify"]["state"] == "planning" { break; }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        }).await.expect("Changes must be visible while the turn or verification is still running");
+        rt.shutdown().await;
+    }
 }
 
 #[tokio::test]

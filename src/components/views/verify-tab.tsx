@@ -99,7 +99,6 @@ export function VerifyTab({ task }: { task: ZTask }) {
                     <p className="text-xs text-muted-foreground">预期：{s.expect}</p>
                     {s.note && <p className={cn("mt-1 text-xs", s.status === "failed" ? "text-danger" : "text-muted-foreground")}>{s.note}</p>}
                   </div>
-                  {s.at != null && v.recording && !busy && <span className="font-mono text-xs tabular-nums text-subtle-foreground">0:{String(s.at).padStart(2, "0")}</span>}
                 </li>
               ))}
             </ol>
@@ -122,12 +121,12 @@ export function VerifyTab({ task }: { task: ZTask }) {
         )}
 
         {v.logs.length > 0 && (
-          <section className="space-y-2">
-            <h3 className="text-sm font-semibold">日志</h3>
+          <details className="group rounded-lg border border-border">
+            <summary className="cursor-pointer rounded-lg px-3 py-2.5 text-sm font-semibold outline-none hover:bg-hover focus-visible:ring-2 focus-visible:ring-ring/60">日志<span className="ml-2 font-normal text-muted-foreground">{v.logs.length} 条</span></summary>
             <pre className="selectable overflow-x-auto rounded-lg border border-border bg-muted/40 p-3 font-mono text-xs leading-[1.7]">
               {v.logs.map((l, i) => <div key={i} className={l.level === "error" ? "text-danger" : "text-muted-foreground"}>[{l.kind}] {l.text}</div>)}
             </pre>
-          </section>
+          </details>
         )}
         {failed && <span className="hidden">{failed.id}</span>}
       </div>

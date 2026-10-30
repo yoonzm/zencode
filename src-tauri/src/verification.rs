@@ -31,12 +31,13 @@ pub fn empty(state: &str, summary: &str) -> Value {
 }
 
 pub fn prompt(phase: &str, instructions: &str, plan: &Value) -> String {
+    let screenshot_policy = "截图默认精简：只保留能证明关键断言、最终结果或失败现场的真实截图；相同页面和状态不重复截图，不为每次点击、输入、加载或中间步骤截图。通常保留 1–3 张关键截图即可；多个独立失败或用户明确要求时按需增加，不得为了数量限制遗漏关键失败证据。计划阶段也应按此原则安排截图。";
     let action = if phase == "planning" {
         "只制定测试计划，不执行验证，不修改代码。所有步骤 status 为 pending。"
     } else {
         "执行已确认的测试计划，不修改业务代码。只能报告实际执行的结果。缺少环境、凭据或工具时必须标为 unverified；禁止虚构成功、证据或录屏。所有验证截图、日志、临时脚本统一存入任务工作区的 .verification/ 目录，不得加入 Git 暂存区或提交。UI 验证在关键步骤和失败处保存真实 PNG 截图。最终 JSON 增加 shots 数组，每项包含 path（工作区相对路径）、label（截图说明）、failed（是否未达预期）；只列出实际生成的截图，没有截图时返回空数组。"
     };
-    format!("{action}\n{BROWSER_POLICY}\n产品验证说明：{instructions}\n已有计划：{plan}\n最终回复只输出 JSON：{{\"state\":\"unverified|passed|failed\",\"mode\":\"checks|api|ui\",\"where\":\"local|server\",\"target\":\"实际地址（未知则留空）\",\"summary\":\"结论及限制\",\"steps\":[{{\"id\":\"1\",\"title\":\"操作\",\"expect\":\"预期\",\"status\":\"pending|passed|failed\",\"note\":\"实际结果与证据（计划阶段留空）\"}}]}}。禁止推送、创建 MR。")
+    format!("{action}\n{BROWSER_POLICY}\n{screenshot_policy}\n产品验证说明：{instructions}\n已有计划：{plan}\n最终回复只输出 JSON：{{\"state\":\"unverified|passed|failed\",\"mode\":\"checks|api|ui\",\"where\":\"local|server\",\"target\":\"实际地址（未知则留空）\",\"summary\":\"结论及限制\",\"steps\":[{{\"id\":\"1\",\"title\":\"操作\",\"expect\":\"预期\",\"status\":\"pending|passed|failed\",\"note\":\"实际结果与证据（计划阶段留空）\"}}]}}。禁止推送、创建 MR。")
 }
 
 pub fn report(response: &str, planning: bool, logs: Value) -> Value {

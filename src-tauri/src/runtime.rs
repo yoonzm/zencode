@@ -215,6 +215,18 @@ impl Runtime {
                 result
             }
 
+            "reportGenerate" => {
+                crate::reports::generate(&args["config"], &json!({"prompt":args["prompt"],"items":args["items"],"stats":args["stats"],"label":args["label"]}), &self.root).await
+            }
+            "reportSend" => {
+                let prefs = restore_secrets(&self.data.lock().await["prefs"])?;
+                if prefs["feishu"]["enabled"] != true { return Err("Feishu is disabled".into()); }
+                let c = &args["card"];
+                let lines = c["lines"].as_array().ok_or("Invalid report")?.iter()
+                    .map(|row| (row[0].as_str().unwrap_or(""), row[1].as_str().unwrap_or("").to_owned())).collect();
+                crate::feishu::send(&prefs["feishu"], crate::feishu::card(text(c,"title"), "blue", lines)).await?;
+                Ok(Value::Null)
+            }
             "feishuTest" => {
                 crate::feishu::send(&args, crate::feishu::test_card()).await?;
                 Ok(Value::Null)
@@ -924,6 +936,8 @@ impl Runtime {
             }
             match method {
                 "turn/completed" => {
+                    // Publish code changes before starting the separate verification turns.
+                    self.diff(id).await?;
                     if text(&p["turn"], "status") != "completed" {
                         return Err(p["turn"]["error"]["message"]
                             .as_str()
@@ -999,6 +1013,10 @@ impl Runtime {
                 }
                 "item/completed" => {
                     let i = &p["item"];
+                    // Shell commands can edit files too, without a fileChange notification.
+                    if matches!(text(i, "type"), "fileChange" | "commandExecution") {
+                        self.diff(id).await?;
+                    }
                     if text(i, "type") == "commandExecution" {
                         if phase != "code" {
                             verify_logs.push(json!({"kind":"cli","level":if i["exitCode"].as_i64()==Some(0) {"info"} else {"error"},"text":format!("{}\n{}", text(i,"command"),text(i,"aggregatedOutput"))}));

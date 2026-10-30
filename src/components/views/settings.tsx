@@ -1,10 +1,11 @@
+import { DEFAULT_PROMPT, REPORT_NAME, WEEKDAYS, buildReport, reportCard, sendReport, setReport, type ReportKind } from "@/store/report";
 import { FEISHU_HOOK, buildCard } from "@/store/push";
 import { checkUpdate, downloadUpdate, requestInstall, changeChannel } from "@/store/update";
 import { flushPrefs } from "@/store/state";
 import { desktopCall } from "@/lib/desktop";
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
-import { Bell, Check, Cpu, FolderGit, GitBranch, Info, Keyboard, Palette, Plug, Rocket, RotateCcw, Sliders, Trash, ListChecks, ChevronLeft, Moon, Sun, Monitor } from "@/lib/icons";
+import { FileText, Bell, Check, Cpu, FolderGit, GitBranch, Info, Keyboard, Palette, Plug, Rocket, RotateCcw, Sliders, Trash, ListChecks, ChevronLeft, Moon, Sun, Monitor } from "@/lib/icons";
 import type { AppConfig } from "@/data/types";
 import { store, useApp, type Notify, type ThemePref } from "@/store/state";
 import { applyClear, cleanDoneRuns, cleanable, describeClear, askConfirm, sync, setTheme } from "@/store/actions";
@@ -12,7 +13,7 @@ import { toast } from "@/store/toast";
 import { navigate, useRoute } from "@/lib/route";
 import { useMedia } from "@/lib/hooks";
 import { Button } from "@/components/ui/button";
-import { Checkbox, Input, Segmented, Toggle } from "@/components/ui/fields";
+import { Select, Checkbox, Input, Segmented, Toggle } from "@/components/ui/fields";
 import { Modal } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
 import { CodexForm, GitlabForm, ZentaoForm } from "@/components/forms/config-forms";
@@ -28,6 +29,7 @@ const SECTIONS = [
   { id: "codex", label: "Codex", icon: Cpu },
   { id: "repos", label: "仓库映射", icon: FolderGit },
   { id: "notifications", label: "通知", icon: Bell },
+  { id: "reports", label: "日报周报", icon: FileText },
   { id: "shortcuts", label: "快捷键", icon: Keyboard },
   { id: "advanced", label: "高级", icon: Sliders },
   { id: "about", label: "关于", icon: Info },
@@ -295,6 +297,110 @@ function Notifications() {
   );
 }
 
+function CardView({ card }: { card: { tone: string; title: string; lines: [string, string][] } }) {
+  return (
+    <div className="max-w-sm overflow-hidden rounded-lg border border-border bg-card shadow-xs">
+        <div className={cn("px-3.5 py-2 text-sm font-semibold text-white", TONE_BAR[card.tone])}>{card.title}</div>
+        <dl className="space-y-1.5 px-3.5 py-3 text-[13px] leading-5">
+          {card.lines.map(([k, v]) => (
+            <div key={k} className="flex gap-3">
+              <dt className="w-9 shrink-0 text-muted-foreground">{k}</dt>
+              <dd className="min-w-0 flex-1 break-words text-foreground">{v}</dd>
+            </div>
+          ))}
+        </dl>
+        <div className="border-t border-border px-3.5 py-2.5">
+          <span className="inline-flex h-7 items-center rounded-md border border-border-strong px-3 text-xs font-medium text-foreground">在 ZenCode 打开</span>
+        </div>
+      </div>
+  );
+}
+
+function ReportBlock({ kind }: { kind: ReportKind }) {
+  const c = useApp((s) => s.reports[kind]);
+  const feishu = useApp((s) => s.feishu);
+  const ready = feishu.enabled && FEISHU_HOOK.test(feishu.webhook.trim());
+  const [preview, setPreview] = useState<Awaited<ReturnType<typeof buildReport>> | null>(null);
+  const [busy, setBusy] = useState(false);
+  const when = kind === "daily" ? `工作日 ${c.time}` : `${WEEKDAYS[c.weekday - 1]} ${c.time}`;
+  return (
+    <section>
+      <Group>
+        <Row title={REPORT_NAME[kind]} desc={kind === "daily" ? `${when} 发送，汇总今天的进展。` : `${when} 发送，汇总本周的进展。`}>
+          <Toggle label={`${REPORT_NAME[kind]}`} checked={c.enabled} onChange={(v) => setReport(kind, { enabled: v })} />
+        </Row>
+        <div className="space-y-3 py-3.5">
+          <div className="flex flex-wrap items-end gap-3">
+            {kind === "weekly" && (
+              <label className="w-28 text-xs font-medium text-muted-foreground">
+                星期
+                <div className="mt-1.5"><Select value={String(c.weekday)} onChange={(v) => setReport(kind, { weekday: Number(v) })} options={WEEKDAYS.map((w, i) => ({ value: String(i + 1), label: w }))} /></div>
+              </label>
+            )}
+            <label className="w-28 text-xs font-medium text-muted-foreground">
+              时间
+              <Input type="time" value={c.time} onChange={(e) => e.target.value && setReport(kind, { time: e.target.value })} className="mt-1.5" />
+            </label>
+          </div>
+          <label className="block text-xs font-medium text-muted-foreground">
+            <span className="flex items-center justify-between">
+              提示词
+              {c.prompt !== DEFAULT_PROMPT[kind] && (
+                <button type="button" onClick={() => setReport(kind, { prompt: DEFAULT_PROMPT[kind] })} className="rounded-sm font-medium text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/60">恢复默认</button>
+              )}
+            </span>
+            <textarea value={c.prompt} onChange={(e) => setReport(kind, { prompt: e.target.value })} rows={3} spellCheck={false} className="mt-1.5 block w-full resize-y rounded-md border border-input bg-background px-2.5 py-2 text-sm font-normal leading-[1.6] text-foreground outline-none placeholder:text-subtle-foreground focus-visible:ring-2 focus-visible:ring-ring/60" />
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" size="sm" disabled={busy} onClick={async () => { setBusy(true); try { setPreview(await buildReport(kind)); } catch (e) { toast({ tone: "danger", title: "预览失败", desc: String(e) }); } finally { setBusy(false); } }}>预览</Button>
+            <Button variant="ghost" size="sm" disabled={!ready || busy} onClick={async () => { setBusy(true); try { await sendReport(kind, { manual: true }); } finally { setBusy(false); } }}>立即发送</Button>
+            {!ready && <span className="text-xs text-subtle-foreground">发送需要先配置飞书</span>}
+          </div>
+        </div>
+      </Group>
+      {preview && (
+        <div className="mt-3 rounded-xl border border-border bg-muted/40 p-4">
+          <div className="mb-3 text-xs font-medium text-muted-foreground">群里会收到</div>
+          {preview.items.length ? <CardView card={reportCard(kind, preview)} /> : <p className="text-sm text-muted-foreground">这段时间还没有进展，到点时不会发送。</p>}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function Reports() {
+  const log = useApp((s) => s.reports.log);
+  const feishu = useApp((s) => s.feishu);
+  const ready = feishu.enabled && FEISHU_HOOK.test(feishu.webhook.trim());
+  return (
+    <div className="space-y-8">
+      <p className="text-sm leading-6 text-muted-foreground">按任务进展自动写日报和周报，发到飞书群。电脑到点没开机，错过不超过 4 小时的会补发。这段时间没有进展就不发。</p>
+      {!ready && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/40 bg-warning/8 px-3.5 py-2.5 text-sm text-foreground">
+          还没有配置飞书，到点不会发送。
+          <button type="button" onClick={() => navigate({ name: "prefs", section: "notifications" } as any)} className="rounded-sm font-medium text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/60">去配置</button>
+        </div>
+      )}
+      <ReportBlock kind="daily" />
+      <ReportBlock kind="weekly" />
+      {log.length > 0 && (
+        <section>
+          <h3 className="mb-2 text-sm font-medium text-foreground">最近发送</h3>
+          <ul className="divide-y divide-border rounded-xl border border-border bg-card px-4">
+            {log.map((l) => (
+              <li key={l.id} className="flex items-center gap-3 py-2.5 text-sm">
+                <span className="w-9 shrink-0 font-medium text-foreground">{REPORT_NAME[l.kind]}</span>
+                <span className="min-w-0 flex-1 truncate text-muted-foreground">{l.result === "sent" ? `${l.items.length} 条 · ${l.stats}` : "没有进展，已跳过"}</span>
+                <span className="shrink-0 text-xs tabular-nums text-subtle-foreground">{new Date(l.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}{l.manual ? " · 手动" : ""}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+}
+
 function Shortcuts() {
   return (
     <div className="space-y-6">
@@ -511,7 +617,7 @@ function About() {
 const TITLE: Record<SectionId, string> = Object.fromEntries(SECTIONS.map((s) => [s.id, s.label])) as any;
 const BODY: Record<SectionId, () => any> = {
   general: General, zentao: ZentaoSection, gitlab: GitlabSection, codex: CodexSection, repos: ReposSection,
-  notifications: Notifications, shortcuts: Shortcuts, advanced: Advanced, about: About,
+  notifications: Notifications, reports: Reports, shortcuts: Shortcuts, advanced: Advanced, about: About,
 };
 
 export function Settings() {
