@@ -71,7 +71,7 @@ jobs:
               'bundle': {'createUpdaterArtifacts': public and private},
               'plugins': {'updater': {'pubkey': os.environ.get('UPDATER_PUBLIC_KEY', '').strip()}}
           }))
-      - run: npm run package -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --config updater-build.json
+      - run: node node_modules/@tauri-apps/cli/tauri.js build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --config updater-build.json
         env:
           ZENCODE_UPDATER_PUBLIC_KEY: ${{ vars.ZENCODE_UPDATER_PUBLIC_KEY }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}

@@ -77,6 +77,9 @@ MR submission does not write links, comments, task status or fix versions to Zen
 
 SHA256SUMS.txt contains installer checksums.
 ''')
+    changes = Path('docs/releases') / f'{tag}.md'
+    if changes.exists():
+        notes.write_text(changes.read_text(encoding='utf-8') + '\n\n' + notes.read_text(), encoding='utf-8')
     gh('release', 'create', tag, '--repo', repo, '--target', commit, '--title', f'ZenCode {tag}', '--notes-file', str(notes), '--draft', *(['--prerelease'] if '-beta.' in tag else []))
     gh('release', 'upload', tag, '--repo', repo, *map(str, files), str(checksums))
     # The by-tag endpoint can return 404 until a draft is published and its tag exists.
