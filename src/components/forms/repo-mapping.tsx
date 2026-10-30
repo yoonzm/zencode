@@ -1,14 +1,16 @@
+import { Modal } from "@/components/ui/dialog";
 import { useEffect, useState } from "react";
-import { Plus, Trash, FolderGit, RefreshCw, Sparkles, X, Play } from "@/lib/icons";
+import { Plus, Trash, FolderGit, RefreshCw, Sparkles, X, Play, ShieldCheck } from "@/lib/icons";
 import type { AppConfig, AiSuggestion, RepoLink, RepoMapping } from "@/data/types";
 import { desktopCall } from "@/lib/desktop";
 import { Button } from "@/components/ui/button";
 import { Combobox, Toggle } from "@/components/ui/fields";
+import { toast } from "@/store/toast";
 import { verifyOf } from "@/data/verify";
 import type { VerifyConfig } from "@/data/types";
 import { Tip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/ui/empty";
-import { uid } from "@/lib/utils";
+import { cn, uid } from "@/lib/utils";
 import { useNow } from "@/lib/hooks";
 import { relTime } from "@/lib/time";
 import { store } from "@/store/state";
@@ -45,39 +47,94 @@ function Label({ children, error }: { children: React.ReactNode; error?: string 
   );
 }
 
+const urlsOf = (prompt: string) => [...new Set(prompt.match(/https?:\/\/[^\s，。）)、]+/g) ?? [])];
+
 function VerifySection({ m, onChange, config }: { m: RepoMapping; onChange: (v: VerifyConfig) => void; config: AppConfig }) {
-  const [tool, setTool] = useState<"draft" | "trial" | null>(null);
   const v = verifyOf(m.verify);
-  const set = (p: Partial<VerifyConfig>) => onChange({ ...v, ...p });
+  const [open, setOpen] = useState(false);
+  const empty = !v.prompt.trim();
+  const urls = urlsOf(v.prompt);
+  const lines = v.prompt.split("\n").filter((l) => l.trim()).length;
+  let summary = "";
+  if (!v.enabled) summary = "未启用，任务完成后不做验证";
+  else if (empty) summary = "还没写验证说明，现在只做代码自检";
+  else summary = `自定义验证 · ${urls.length ? urls.map((u) => u.replace(/^https?:\/\//, "")).slice(0, 2).join("、") + (urls.length > 2 ? ` 等 ${urls.length} 个环境` : "") : "未指定环境地址"} · ${lines} 行说明`;
+  const need = v.enabled && empty;
   return (
-    <div className="mt-4 border-t border-border pt-3.5">
-      <div className="flex items-center gap-2">
-        <h4 className="text-sm font-semibold text-foreground">验证</h4>
-        <span className="text-xs text-muted-foreground">改完代码后，AI 按这里的说明跑一遍</span>
-        <span className="ml-auto"><Toggle checked={v.enabled} onChange={(b) => set({ enabled: b })} label="启用验证" /></span>
+    <div className={cn("mt-3 flex items-center gap-2.5 rounded-lg border px-3 py-2", need ? "border-warning/40 bg-warning/8" : "border-border bg-muted/40")}>
+      <ShieldCheck className={cn("size-4 shrink-0", v.enabled ? (need ? "text-warning" : "text-accent") : "text-subtle-foreground")} />
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-foreground">验证</div>
+        <div className={cn("truncate text-xs", need ? "text-warning" : "text-muted-foreground")}>{summary}</div>
       </div>
-      {v.enabled && (
-        <div className="mt-3 space-y-3">
-          <Label>
-            验证说明
-            <textarea
-              value={v.prompt}
-              onChange={(ev) => set({ prompt: ev.target.value })}
-              rows={5}
-              spellCheck={false}
-              placeholder="告诉 AI 怎么验证：在哪里跑（本机或测试环境地址）、怎么启动和登录、重点看什么、用浏览器还是接口。留空则只做代码自检。"
-              className="w-full resize-y rounded-md border border-input bg-background px-2.5 py-2 text-sm leading-[1.6] font-normal text-foreground outline-none placeholder:text-subtle-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
-            />
-          </Label>
-          <div className="flex justify-end gap-1">
-            <Button variant="ghost" size="sm" disabled={mappingHasError(m)} onClick={() => setTool("draft")}><Sparkles />AI 生成草稿</Button>
-            <Button variant="ghost" size="sm" disabled={mappingHasError(m) || !v.prompt.trim()} onClick={() => setTool("trial")}><Play />试运行</Button>
-          </div>
-          {mappingHasError(m) && <p className="text-xs text-muted-foreground">选择产品、仓库和分支后可生成草稿或试运行。</p>}
-          {tool && <VerificationToolDialog mode={tool} mapping={m} config={config} onApply={prompt => set({ prompt })} onClose={() => setTool(null)} />}
-        </div>
-      )}
+      <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>{v.enabled && !empty ? "编辑" : need ? "去填写" : "设置"}</Button>
+      <Toggle checked={v.enabled} onChange={(b) => onChange({ ...v, enabled: b })} label="启用验证" />
+      {open && <VerifyDialog m={m} config={config} value={v} onClose={() => setOpen(false)} onSave={(x) => { onChange(x); setOpen(false); }} />}
     </div>
+  );
+}
+
+function VerifyDialog({ m, value, config, onClose, onSave }: { m: RepoMapping; config: AppConfig; value: VerifyConfig; onClose: () => void; onSave: (v: VerifyConfig) => void }) {
+  const [text, setText] = useState(value.prompt);
+  const [tool, setTool] = useState<"draft" | "trial" | null>(null);
+  const cfg = { enabled: value.enabled, prompt: text };
+  const urls = urlsOf(text);
+  const has = !!text.trim();
+  const dirty = text !== value.prompt;
+  return (
+    <Modal
+      open
+      onClose={() => { if (!tool) onClose(); }}
+      size="lg"
+      className="sm:max-w-3xl"
+      title={`验证 · ${m.product || "未选择产品"}`}
+      description="AI 改完代码后，会按这里的说明把功能跑一遍，再给出结论。"
+      footer={
+        <>
+          <div className="mr-auto flex items-center gap-1">
+            <Button variant="ghost" size="sm" disabled={mappingHasError(m)} onClick={() => setTool("draft")}><Sparkles />AI 生成草稿</Button>
+            <Button variant="ghost" size="sm" disabled={mappingHasError(m) || !has} onClick={() => setTool("trial")}>
+              <Play />试运行
+            </Button>
+          </div>
+          <Button variant="ghost" onClick={onClose}>取消</Button>
+          <Button variant="primary" disabled={!dirty} onClick={() => onSave(cfg)}>保存</Button>
+        </>
+      }
+    >
+      <div className="grid gap-4 md:grid-cols-[1fr_13rem]">
+        <div className="min-w-0">
+          <textarea
+            value={text}
+            onChange={(ev) => setText(ev.target.value)}
+            rows={16}
+            spellCheck={false}
+            aria-label="验证说明"
+            placeholder="告诉 AI 怎么验证：在哪里跑（本机或测试环境地址）、怎么启动和登录、重点看什么、用浏览器还是接口。留空则只做代码自检。"
+            className="block h-[22rem] max-h-[60vh] w-full resize-y rounded-md border border-input bg-background px-3 py-2.5 font-mono text-[13px] leading-[1.65] text-foreground outline-none placeholder:font-sans placeholder:text-subtle-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
+          />
+        </div>
+        <aside className="flex min-w-0 flex-col gap-3 text-xs">
+          <div>
+            <div className="mb-1.5 font-medium text-muted-foreground">说明摘要</div>
+            {has ? (
+              <dl className="space-y-2 rounded-md bg-muted/50 p-2.5">
+                <div><dt className="text-subtle-foreground">验证方式</dt><dd className="mt-0.5 text-foreground">按说明制定验证计划</dd></div>
+                <div>
+                  <dt className="text-subtle-foreground">测试环境</dt>
+                  <dd className="mt-0.5 space-y-0.5 break-all text-foreground">{urls.length ? urls.map((u) => <div key={u}>{u}</div>) : "说明中未指定环境地址"}</dd>
+                </div>
+              </dl>
+            ) : (
+              <p className="rounded-md bg-muted/50 p-2.5 leading-5 text-muted-foreground">还没写说明，只做代码自检，不会启动服务。</p>
+            )}
+          </div>
+          <p className="leading-5 text-subtle-foreground">可以写多个测试环境，AI 会按说明里的顺序依次验证。</p>
+        </aside>
+      </div>
+      {mappingHasError(m) && <p className="mt-3 text-xs text-muted-foreground">选择产品、仓库和分支后可生成草稿或试运行。</p>}
+      {tool && <VerificationToolDialog mode={tool} mapping={{ ...m, verify: cfg }} config={config} onApply={setText} onClose={() => setTool(null)} />}
+    </Modal>
   );
 }
 
@@ -167,15 +224,14 @@ export function RepoMappingEditor({ value, onChange, showErrors, config }: { val
             const productOpts = products.filter((p) => p === m.product || !used.has(p)).map((p) => ({ value: p, label: p }));
             return (
               <li key={m.id} className="rounded-lg border border-border bg-card p-3.5">
-                <div className="mb-3 flex items-end gap-2">
-                  <div className="min-w-0 flex-1 sm:max-w-xs">
+                <div className="mb-3 flex items-start gap-2">
+                  <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
                     <Label error={showErrors ? e.product : ""}>
-                      禅道产品
-                      <Combobox value={m.product} onChange={(v: string) => updateMap(m.id, (x) => ({ ...x, product: v }))} options={productOpts} placeholder="选择产品" searchPlaceholder="搜索产品…" invalid={showErrors && !!e.product} onRefresh={refreshCatalog} refreshing={busy} />
+                      产品
+                      <Combobox value={m.product} onChange={(v: string) => (value.some((x) => x.id !== m.id && x.product === v) ? toast({ title: "这个产品已经添加过", tone: "warn", duration: 2400 }) : updateMap(m.id, (x) => ({ ...x, product: v })))} options={productOpts} placeholder="选择或输入产品名" searchPlaceholder="搜索，或直接输入产品名…" creatable={() => "禅道里没有这个产品时，直接用这个名字"} invalid={showErrors && !!e.product} onRefresh={refreshCatalog} refreshing={busy} />
                     </Label>
                   </div>
-                  <span className="pb-1.5 text-xs text-muted-foreground">{m.repos.length} 个仓库</span>
-                  <Button variant="ghost" size="icon-sm" className="ml-auto" aria-label={`删除产品映射 ${i + 1}`} onClick={() => onChange(value.filter((x) => x.id !== m.id))}>
+                  <Button variant="ghost" size="icon-sm" className="mt-[1.375rem]" aria-label={`删除产品映射 ${i + 1}`} onClick={() => onChange(value.filter((x) => x.id !== m.id))}>
                     <Trash />
                   </Button>
                 </div>

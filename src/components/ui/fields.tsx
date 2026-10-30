@@ -134,13 +134,15 @@ export function Checkbox({ checked, onChange, label, className }: { checked: boo
 }
 
 /** 可搜索的下拉：选项很多时用它代替 Select。onRefresh 存在时，列表底部和“没有匹配项”处会给出刷新入口。 */
-export function Combobox<T extends string>({ value, onChange, options, id, placeholder = "请选择", searchPlaceholder = "搜索…", invalid, disabled, onRefresh, refreshing, className }: {
+export function Combobox<T extends string>({ value, onChange, options, id, placeholder = "请选择", searchPlaceholder = "搜索…", invalid, disabled, onRefresh, refreshing, className, creatable }: {
   value: T | "";
   onChange: (v: T) => void;
   options: Opt<T>[];
   id?: string;
   placeholder?: string;
   searchPlaceholder?: string;
+  /** 允许直接输入列表里没有的值 */
+  creatable?: (text: string) => string;
   invalid?: boolean;
   disabled?: boolean;
   onRefresh?: () => void;
@@ -148,14 +150,17 @@ export function Combobox<T extends string>({ value, onChange, options, id, place
   className?: string;
 }) {
   const [open, setOpen] = React.useState(false);
-  const cur = options.find((o) => o.value === value);
+  const [q, setQ] = React.useState("");
+  const cur = options.find((o) => o.value === value) ?? (creatable && value ? { value, label: value as string } : undefined);
+  const typed = q.trim();
+  const canCreate = !!creatable && !!typed && !options.some((o) => o.label === typed);
   const refresh = onRefresh && (
     <button type="button" onClick={onRefresh} disabled={refreshing} className="inline-flex items-center gap-1 rounded-sm text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/60 disabled:opacity-60">
       <RefreshCw className={cn("size-3", refreshing && "animate-spin")} />{refreshing ? "正在刷新…" : "刷新列表"}
     </button>
   );
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQ(""); }}>
       <PopoverTrigger asChild>
         <button
           id={id}
@@ -172,14 +177,22 @@ export function Combobox<T extends string>({ value, onChange, options, id, place
       </PopoverTrigger>
       <PopoverContent align="start" sideOffset={4} className="w-(--radix-popover-trigger-width) min-w-56 overflow-hidden p-0 shadow-pop">
         <Command>
-          <CommandInput placeholder={searchPlaceholder} />
+          <CommandInput placeholder={searchPlaceholder} value={q} onValueChange={setQ} />
           <CommandList className="max-h-60">
-            <CommandEmpty className="px-3 py-4 text-center text-xs text-muted-foreground">
+            {canCreate && (
+              <CommandItem value={`__create ${typed}`} forceMount onSelect={() => { onChange(typed as T); setOpen(false); setQ(""); }} className="py-1.5">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">使用「{typed}」</span>
+                  <span className="block truncate text-xs text-muted-foreground">{creatable!(typed)}</span>
+                </span>
+              </CommandItem>
+            )}
+            <CommandEmpty className={cn("px-3 py-4 text-center text-xs text-muted-foreground", canCreate && "hidden")}>
               <div>没有匹配项</div>
               {refresh && <div className="mt-1.5">找不到想要的？{refresh}</div>}
             </CommandEmpty>
             {options.map((o) => (
-              <CommandItem key={o.value} value={`${o.label} ${o.hint ?? ""}`} onSelect={() => { onChange(o.value); setOpen(false); }} className="py-1.5">
+              <CommandItem key={o.value} value={`${o.label} ${o.hint ?? ""}`} onSelect={() => { onChange(o.value); setOpen(false); setQ(""); }} className="py-1.5">
                 <span className="min-w-0 flex-1">
                   <span className="block truncate">{o.label}</span>
                   {o.hint && <span className="block truncate text-xs text-muted-foreground">{o.hint}</span>}

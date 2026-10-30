@@ -26,7 +26,10 @@ let seq=0;
 readline.createInterface({input:process.stdin}).on('line',line=>{
  const r=JSON.parse(line), m=r.method, p=r.params;
  if(m==='initialize') send({id:r.id,result:{}});
- if(m==='thread/resume'||m==='thread/start') send({id:r.id,result:{thread:{id:'fixture'}}});
+ if(m==='thread/resume'||m==='thread/start') {
+  if(p.developerInstructions.includes('只在当前任务工作区实现需求') || !p.developerInstructions.includes('访问、登录、部署并验证用户指定的测试环境')) throw Error('Workspace policy blocks remote verification');
+  send({id:r.id,result:{thread:{id:'fixture'}}});
+ }
  if(m==='turn/start') {
   const id='turn-'+(++seq), prompt=p.input[0].text;
   require('node:fs').appendFileSync('prompts.log',JSON.stringify(prompt)+'\n');

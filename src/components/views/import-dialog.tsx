@@ -123,12 +123,12 @@ export function ImportDialog() {
                 <Input value={c.title} onChange={(e: any) => set(c.id, { title: e.target.value })} aria-label="标题" className="font-medium" />
                 <Button variant="ghost" size="icon-sm" aria-label="移除" onClick={() => setCands((l) => l!.filter((x) => x.id !== c.id))}><X /></Button>
               </div>
-              <div className="mt-2 flex flex-wrap items-center gap-2 pl-6">
+              <div className="mt-2 flex items-center gap-2 pl-6 pr-9">
                 <Segmented size="sm" label="类型" value={c.kind} onChange={(v) => set(c.id, { kind: v })} options={[{ value: "story", label: "需求" }, { value: "bug", label: "Bug" }]} />
-                <div className="w-40">
+                <div className="min-w-0 flex-1">
                   <Select value={c.product} onChange={(v) => set(c.id, { product: v })} options={products.map((p) => ({ value: p, label: p }))} placeholder="选择产品" invalid={tried && c.on && !c.product} />
                 </div>
-                <div className="w-28">
+                <div className="w-28 shrink-0">
                   <Select value={String(c.priority)} onChange={(v) => set(c.id, { priority: Number(v) as Priority })} options={([1, 2, 3, 4] as Priority[]).map((p) => ({ value: String(p), label: `P${p} ${PRIORITY_LABEL[p]}` }))} />
                 </div>
               </div>
