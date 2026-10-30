@@ -70,7 +70,7 @@ export async function sync(opts: { auto?: boolean } = {}) {
   finally { store.set({ syncing: false }); }
 }
 function report(e: unknown) { toast({ title: "操作未完成", desc: e instanceof Error ? e.message : String(e), tone: "danger", duration: 8000 }); }
-export const cleanable = (t: ZTask) => t.run.state === "done" && !t.run.cleaned;
+export const cleanable = (t: ZTask) => ["done", "completed"].includes(t.run.state) && !t.run.cleaned;
 let cleaning = false;
 async function cleanup(mode: "auto" | "done" | "clear", products: string[] | "all" = "all", days = 30) {
   if (cleaning || (mode === "auto" && (store.get().syncing || store.get().listStatus === "loading" || location.hash === "#setup"))) return false;
@@ -145,6 +145,12 @@ export async function sendInstruction(id: string, text: string, ref?: string) {
     await desktopCall("start", { id, config: store.get().config, instruction: [ref, text].filter(Boolean).join("\n") });
     return true;
   } catch (e) { report(e); return false; }
+}
+export function completeTask(id: string) {
+  askConfirm({ title: "标记为已完成？", desc: "不再处理这个任务，已有的改动会保留。", confirmLabel: "完成", onConfirm: async () => { await desktopCall("complete", { id }); } });
+}
+export function mergeMr(id: string) {
+  askConfirm({ title: "合并 MR？", desc: "将通过 GitLab 合并到目标分支，成功后任务标记为已完成。", confirmLabel: "合并", onConfirm: async () => { await desktopCall("mergeMr", { id, config: store.get().config }); } });
 }
 export function createMr(id: string) { return runCall("mr", { id }); }
 export function openExternal(url: string) { void desktopCall("open", { url }).catch(report); }

@@ -1,3 +1,4 @@
+import { askConfirm } from "@/store/actions";
 import { useModels, selection } from "@/data/models";
 import { useEffect, useId, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -183,6 +184,59 @@ function AutoSync({ value, onChange }: { value: number; onChange: (n: number) =>
 
 // ── GitLab ───────────────────────────────────────────────
 
+const MR_MODES: { value: GitlabConfig["mrMode"]; title: string; desc: string }[] = [
+  { value: "manual", title: "手动", desc: "在任务里点「创建 Merge Request」，再点「合并 MR」。" },
+  { value: "auto-create", title: "自动创建", desc: "验证通过后自动创建 MR，由你来合并。" },
+  { value: "auto-merge", title: "自动创建并合并", desc: "验证通过后自动创建并合并，不再经过你审核。" },
+];
+
+function MrModeField({ value, onChange }: { value: GitlabConfig; onChange: (p: Partial<GitlabConfig>) => void }) {
+  const feishu = useApp((s) => s.feishu);
+  const pick = (m: GitlabConfig["mrMode"]) => {
+    if (m === value.mrMode) return;
+    if (m === "auto-merge") {
+      askConfirm({ title: "开启自动合并？", desc: "验证通过的任务会直接合并到目标分支，不再经过你审核。", confirmLabel: "开启", danger: true, onConfirm: () => onChange({ mrMode: m }) });
+      return;
+    }
+    onChange({ mrMode: m });
+  };
+  const auto = value.mrMode !== "manual";
+  return (
+    <fieldset>
+      <legend className="mb-2 text-sm font-medium text-foreground">Merge Request</legend>
+      <div role="radiogroup" aria-label="Merge Request" className="grid gap-2">
+        {MR_MODES.map((o) => {
+          const on = value.mrMode === o.value;
+          const danger = o.value === "auto-merge";
+          return (
+            <button key={o.value} role="radio" aria-checked={on} type="button" onClick={() => pick(o.value)}
+              className={cn("flex items-start gap-3 rounded-lg border p-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/60", on ? (danger ? "border-danger/50 bg-danger/6" : "border-accent/50 bg-accent/6") : "border-border bg-card hover:border-border-strong")}>
+              <span className={cn("mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border", on ? (danger ? "border-danger" : "border-accent") : "border-border-strong")}>
+                {on && <span className={cn("size-2 rounded-full", danger ? "bg-danger" : "bg-accent")} />}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-foreground">{o.title}</span>
+                <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{o.desc}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {auto && (
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">
+          只有验证通过的任务才会自动处理，其余仍停在待审核。自动处理的任务不再经过待审核{feishu.enabled ? "，结果会推送到飞书" : "，建议在「通知」里配置飞书，及时知道结果"}。
+        </p>
+      )}
+      {value.mrMode !== "auto-merge" && (
+        <label className="mt-3 flex items-center gap-2.5 text-sm text-foreground">
+          <Toggle checked={value.mrDraft} onChange={(v) => onChange({ mrDraft: v })} label="默认创建草稿 MR" />
+          默认创建草稿 MR
+        </label>
+      )}
+    </fieldset>
+  );
+}
+
 export function GitlabForm({ value, onChange, test, onTest, onDemo }: { value: GitlabConfig; onChange: (p: Partial<GitlabConfig>) => void; test: ReturnType<typeof useConnTest>["state"]; onTest: () => void; onDemo?: () => void }) {
   return (
     <div className="space-y-5">
@@ -192,19 +246,7 @@ export function GitlabForm({ value, onChange, test, onTest, onDemo }: { value: G
       <Field label="Personal Access Token" hint="需要 api 和 write_repository 权限。令牌只保存在本机钥匙串中。">
         {({ id, describedBy }) => <SecretInput id={id} describedBy={describedBy} value={value.token} onChange={(v: string) => onChange({ token: v, connected: false })} placeholder="glpat-xxxxxxxxxxxxxxxxxxxx" />}
       </Field>
-      <div className="grid gap-5 sm:grid-cols-2">
-        <Field label="默认目标分支">
-          {({ id }) => <Input id={id} value={value.targetBranch} onChange={(e: any) => onChange({ targetBranch: e.target.value })} placeholder="main" className="font-mono text-xs" spellCheck={false} />}
-        </Field>
-        <Field label="Merge Request">
-          {() => (
-            <label className="flex h-8 items-center gap-2.5 text-sm text-foreground">
-              <Toggle checked={value.mrDraft} onChange={(v) => onChange({ mrDraft: v })} label="默认创建草稿 MR" />
-              默认创建草稿 MR
-            </label>
-          )}
-        </Field>
-      </div>
+      <MrModeField value={value} onChange={onChange} />
       <AdvancedTls checked={!!value.insecureTls} onChange={(v) => onChange({ insecureTls: v, connected: false })} test={test} />
       <TestBar onRun={onTest} state={test} />
       {onDemo && (

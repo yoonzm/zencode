@@ -26,7 +26,7 @@ function period(kind: ReportKind, now: number) {
 /** Summarize task results using Codex and the configured prompt. */
 export async function buildReport(kind: ReportKind, now = Date.now()): Promise<{ items: string[]; stats: string; label: string }> {
   const { start, label } = period(kind, now);
-  const tasks = store.get().tasks.filter((t) => Math.max(t.updatedAt, t.run.finishedAt ?? 0) >= start && Math.max(t.updatedAt, t.run.finishedAt ?? 0) <= now && ["done", "review", "failed"].includes(t.run.state));
+  const tasks = store.get().tasks.filter((t) => Math.max(t.updatedAt, t.run.finishedAt ?? 0) >= start && Math.max(t.updatedAt, t.run.finishedAt ?? 0) <= now && ["done", "completed", "review", "failed"].includes(t.run.state));
   const mr = tasks.filter((t) => t.run.mr);
   const review = tasks.filter((t) => t.run.state === "review");
   const failed = tasks.filter((t) => t.run.state === "failed");
@@ -37,6 +37,7 @@ export async function buildReport(kind: ReportKind, now = Date.now()): Promise<{
     const res = v?.state === "passed" ? "验证通过，待审核" : v?.state === "failed" ? "验证未通过，需要处理" : "已改完，待审核";
     lines.push(`${taskRef(t)} ${t.title}：${res}`);
   }
+  for (const t of tasks.filter(t => t.run.state === "completed" && !t.run.mr)) lines.push(`${taskRef(t)} ${t.title}：已完成`);
   for (const t of failed) lines.push(`${taskRef(t)} ${t.title}：执行失败，需要处理`);
   let items = lines;
   const stats = `完成 ${mr.length + review.length} 项 · 提交 MR ${mr.length} 个 · 失败 ${failed.length} 项`;

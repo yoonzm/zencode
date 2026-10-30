@@ -23,6 +23,7 @@ test('TLS controls default to verification and show service-specific warnings an
     alias: {'@': `${process.cwd()}/src`},
     define: {'process.env.NODE_ENV': '"production"'},
     plugins: [{name: 'server-render-environment', setup(build) {
+      build.onLoad({filter: /[\\/]store[\\/]actions\.ts$/}, () => ({contents: 'export function askConfirm() {}'}));
       build.onLoad({filter: /[\\/]store[\\/]state\.ts$/}, () => ({contents: 'export const store = {}; export function useApp() {}'}));
       build.onLoad({filter: /[\\/]lib[\\/]desktop\.ts$/}, () => ({contents: 'export function desktopCall() { throw new Error("Unexpected service call during render"); }'}));
     }}],

@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { downloadUpdate, dismissUpdate, requestInstall } from "@/store/update";
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
-import { ChevronsUpDown, Package, Inbox, Moon, Monitor, PanelLeft, PanelLeftClose, RefreshCw, Search, Settings, Sparkles, Sun, User, CircleCheck, GitPullRequest, RotateCcw, Rocket } from "@/lib/icons";
+import { ChevronsUpDown, Package, Inbox, Moon, Monitor, PanelLeft, PanelLeftClose, RefreshCw, Search, Settings, Sparkles, Sun, User, CircleCheck, GitMerge, GitPullRequest, RotateCcw, Rocket } from "@/lib/icons";
 import { useApp } from "@/store/state";
 import { PRESETS, activePreset, filterTasks, presetFilters, sortTasks } from "@/store/select";
 import { cycleTheme, setFilters, setPalette, sync, toggleSidebar } from "@/store/actions";
@@ -39,7 +39,7 @@ function SectionTitle({ children }: { children: any }) {
   return <h2 className="px-2 pb-1 pt-4 text-xs font-medium text-subtle-foreground">{children}</h2>;
 }
 
-const PRESET_ICON: Record<string, any> = { all: Inbox, mine: User, active: Sparkles, review: GitPullRequest, done: CircleCheck };
+const PRESET_ICON: Record<string, any> = { all: Inbox, mine: User, active: Sparkles, review: GitPullRequest, done: GitMerge, completed: CircleCheck };
 
 const ICON_BTN =
   "grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60";

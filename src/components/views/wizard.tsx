@@ -27,7 +27,7 @@ const STEPS = [
 
 const BLANK: AppConfig = {
   zentao: { baseUrl: "", edition: "biz", auth: "token", account: "", secret: "", scope: "mine", syncIntervalMin: 5, autoRun: true, connected: false },
-  gitlab: { baseUrl: "", token: "", targetBranch: "main", mrDraft: true, connected: false },
+  gitlab: { baseUrl: "", token: "", mrMode: "manual", mrDraft: false, connected: false },
   codex: { cliPath: "", model: "", effort: "", sandbox: "workspace-write", concurrency: 3, connected: false },
   mappings: [],
 };

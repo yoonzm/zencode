@@ -193,6 +193,11 @@ export async function hydrate() {
   const data = await desktopCall("load");
   // Only supported preferences are restored; obsolete prototype platform overrides are ignored.
   const prefs = Object.fromEntries(PERSIST_KEYS.filter(k => k in (data.prefs ?? {})).map(k => [k, data.prefs[k]]));
+  if (prefs.config?.gitlab) {
+    const g = prefs.config.gitlab;
+    prefs.config = { ...prefs.config, gitlab: { ...g, mrMode: ["manual", "auto-create", "auto-merge"].includes(g.mrMode) ? g.mrMode : "manual", mrDraft: g.mrMode ? !!g.mrDraft : false } };
+    delete (prefs.config.gitlab as any).targetBranch;
+  }
   prefs.feishu = { ...defaultPrefs.feishu, ...(prefs.feishu ?? {}) };
   prefs.reports = { daily: { ...defaultPrefs.reports.daily, ...prefs.reports?.daily }, weekly: { ...defaultPrefs.reports.weekly, ...prefs.reports?.weekly }, log: prefs.reports?.log ?? [] };
   prefs.cleanupDays = [7, 30, 60, 90].includes(prefs.cleanupDays) ? prefs.cleanupDays : 30;

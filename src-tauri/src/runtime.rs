@@ -180,7 +180,7 @@ impl Runtime {
     pub async fn call(self: &Arc<Self>, op: &str, args: Value) -> Result<Value> {
         if op == "delete" { return self.delete_task(text(&args, "id")).await; }
         // A deletion must not race a sync merge, a new run, or MR submission.
-        let _mutation = if matches!(op, "refreshDiff" | "importManual" | "sync" | "delete" | "start" | "reverify" | "mr" | "cleanup" | "resumeAfterUpdate" | "verificationToolStart") {
+        let _mutation = if matches!(op, "refreshDiff" | "importManual" | "sync" | "delete" | "start" | "reverify" | "mr" | "mergeMr" | "complete" | "cleanup" | "resumeAfterUpdate" | "verificationToolStart") {
             Some(self.task_mutations.lock().await)
         } else {
             None
@@ -188,7 +188,7 @@ impl Runtime {
         if self.updating.load(Ordering::SeqCst) && !matches!(op, "load" | "viewed") {
             return Err("正在准备安装更新，请稍后再试".into());
         }
-        if matches!(op, "start" | "reverify" | "mr" | "refreshDiff" | "openWorkdir") {
+        if matches!(op, "start" | "reverify" | "mr" | "mergeMr" | "complete" | "refreshDiff" | "openWorkdir") {
             let task = self.task(text(&args, "id")).await?;
             let pending = self.data.lock().await["pendingDeletes"].as_array().is_some_and(|rs| rs.iter().any(|r| r["taskId"] == args["id"] && r["ready"] != true));
             if task["run"]["deleting"] == true || pending { return Err("任务正在删除或等待恢复，暂时无法执行此操作".into()); }
@@ -604,6 +604,28 @@ impl Runtime {
                 .await?;
                 Ok(Value::Null)
             }
+            "complete" => {
+                let id = text(&args, "id");
+                let job = self.jobs.lock().await.get(id).cloned();
+                if let Some(job) = job {
+                    job.paused.store(true, Ordering::SeqCst);
+                    job.cancel_queue.notify_one();
+                    job.verify_ready.notify_one();
+                    if let Some(session) = job.session.lock().await.clone() { session.close().await; }
+                    tokio::time::timeout(std::time::Duration::from_secs(35), job.finished.notified()).await.map_err(|_| "执行仍在停止，请稍后重试")?;
+                }
+                self.update(id, |t| {
+                    t["run"]["state"] = json!("completed");
+                    t["run"]["pendingInstructions"] = json!([]);
+                    t["run"]["finishedAt"] = json!(now());
+                    push_event(t, json!({"kind":"system","tone":"success","text":"已手动标记为完成"}));
+                }).await?;
+                Ok(Value::Null)
+            }
+            "mergeMr" => {
+                self.merge_mr(text(&args, "id"), &args["config"]).await?;
+                Ok(Value::Null)
+            }
             "mr" => {
                 self.create_mr(text(&args, "id"), &args["config"]).await?;
                 Ok(Value::Null)
@@ -640,7 +662,7 @@ impl Runtime {
         let jobs = self.jobs.lock().await;
         let selected: Vec<Value> = tasks.iter().filter(|t| match mode {
             "auto" => !jobs.contains_key(text(t, "id")) && crate::cleanup::expired(t, now() - days * 86_400_000),
-            "done" => !jobs.contains_key(text(t, "id")) && text(&t["run"], "state") == "done" && t["run"]["cleaned"] != true,
+            "done" => !jobs.contains_key(text(t, "id")) && matches!(text(&t["run"], "state"), "done" | "completed") && t["run"]["cleaned"] != true,
             _ => all || products.is_some_and(|ps| ps.contains(&t["product"])),
         }).cloned().collect();
         drop(jobs);
@@ -678,7 +700,7 @@ impl Runtime {
                 if let Some(task) = next["tasks"].as_array_mut().and_then(|ts| ts.iter_mut().find(|x| x["id"] == t["id"])) {
                     let mr = task["run"]["mr"].clone();
                     task["run"] = services::empty_run();
-                    task["run"]["state"] = json!("done");
+                    task["run"]["state"] = json!(if text(&task["run"], "state") == "completed" { "completed" } else { "done" });
                     task["run"]["cleaned"] = json!(true);
                     task["run"]["mr"] = mr;
                 }
@@ -784,6 +806,15 @@ impl Runtime {
                 .await;
             rt.jobs.lock().await.remove(&id);
             job.finished.notify_one();
+            let _mutation = rt.task_mutations.lock().await;
+            if !rt.updating.load(Ordering::SeqCst) && rt.task(&id).await.is_ok_and(|t| text(&t["run"], "state") == "review" && text(&t["run"]["verify"], "state") == "passed") {
+                let mode = text(&config["gitlab"], "mrMode");
+                if matches!(mode, "auto-create" | "auto-merge") {
+                    let result = rt.create_mr(&id, &config).await;
+                    let result = if result.is_ok() && mode == "auto-merge" { rt.merge_mr(&id, &config).await } else { result };
+                    if let Err(e) = result { let _ = rt.update(&id, |t| push_event(t, json!({"kind":"error","text":format!("自动处理 MR 失败：{e}")}))).await; }
+                }
+            }
         });
         Ok(())
     }
@@ -1086,6 +1117,27 @@ impl Runtime {
             .await?;
         Ok(diff)
     }
+    async fn merge_mr(&self, id: &str, config: &Value) -> Result<()> {
+        let t = self.task(id).await?;
+        if text(&t["run"], "state") != "done" { return Err("只有已提交任务可以合并 MR".into()); }
+        let mr = &t["run"]["mr"];
+        let iid = mr["iid"].as_u64().ok_or("缺少 MR 编号")?;
+        let repo = text(&t["run"]["mapping"], "repo");
+        let encoded = url::form_urlencoded::byte_serialize(repo.as_bytes()).collect::<String>();
+        let route = format!("/projects/{encoded}/merge_requests/{iid}");
+        let api = services::gitlab(&config["gitlab"])?;
+        let current = api.request(&route, "GET", None).await?;
+        if current["draft"] == true { return Err("请先在 GitLab 将草稿标记为可合并，再重试".into()); }
+        let merged = if text(&current, "state") == "merged" { current } else {
+            api.request(&format!("{route}/merge"), "PUT", Some(json!({"sha":current["sha"]}))).await?
+        };
+        if text(&merged, "state") != "merged" { return Err("GitLab 尚未完成合并，请检查流水线和合并条件".into()); }
+        self.update(id, |t| {
+            t["run"]["state"] = json!("completed");
+            t["run"]["finishedAt"] = json!(now());
+            push_event(t, json!({"kind":"system","tone":"success","text":"MR 已合并，任务已完成"}));
+        }).await
+    }
     async fn create_mr(&self, id: &str, config: &Value) -> Result<()> {
         {
             let mut data = self.data.lock().await;
@@ -1174,7 +1226,7 @@ impl Runtime {
             let mr = if let Some(mr) = existing.as_array().and_then(|ms| ms.first()) {
                 mr.clone()
             } else {
-                api.request(&route,"POST",Some(json!({"source_branch":run["branch"],"target_branch":m["branch"],"title":format!("{}{}",if config["gitlab"]["mrDraft"].as_bool()==Some(true) || text(&run["verify"], "state") != "passed" {"Draft: "}else{""},text(&t,"title")),"description":format!("{}\n{}{}",crate::manual::reference(&t),if t["manual"] == true { "手动录入需求" } else { text(&config["zentao"],"baseUrl") },crate::verification::mr_note(run))}))).await?
+                api.request(&route,"POST",Some(json!({"source_branch":run["branch"],"target_branch":m["branch"],"title":format!("{}{}",if (config["gitlab"]["mrDraft"].as_bool()==Some(true) && text(&config["gitlab"], "mrMode") != "auto-merge") || text(&run["verify"], "state") != "passed" {"Draft: "}else{""},text(&t,"title")),"description":format!("{}\n{}{}",crate::manual::reference(&t),if t["manual"] == true { "手动录入需求" } else { text(&config["zentao"],"baseUrl") },crate::verification::mr_note(run))}))).await?
             };
             if mr["iid"].as_u64().is_none() || url::Url::parse(text(&mr, "web_url")).is_err() {
                 return Err("GitLab 返回无效 MR 信息，未标记提交成功".into());
@@ -1315,6 +1367,18 @@ async fn stage_business_changes(cwd: &std::path::Path, base: &str) -> Result<()>
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn completing_task_preserves_changes_and_survives_reload() {
+        let root = tempfile::tempdir().unwrap();
+        Storage::new(root.path()).save(&json!({"prefs":{},"tasks":[{"id":"manual-1","run":{"state":"review","rawDiff":"saved changes","events":[]}}]})).unwrap();
+        let rt = Runtime::new(root.path().to_owned(), Arc::new(|_, _| {})).unwrap();
+        rt.call("complete", json!({"id":"manual-1"})).await.unwrap();
+        let t = rt.task("manual-1").await.unwrap();
+        assert_eq!(t["run"]["state"], "completed");
+        assert_eq!(t["run"]["rawDiff"], "saved changes");
+        let restored = Runtime::new(root.path().to_owned(), Arc::new(|_, _| {})).unwrap();
+        assert_eq!(restored.task("manual-1").await.unwrap()["run"]["state"], "completed");
+    }
     #[tokio::test]
     async fn verification_artifacts_stay_local_and_out_of_diff_and_commit() {
         let root = tempfile::tempdir().unwrap();

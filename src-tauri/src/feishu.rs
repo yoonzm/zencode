@@ -48,6 +48,7 @@ pub fn transition(old: &Value, task: &Value, prefs: &Value) -> Option<Value> {
         "review" if text(&run["verify"], "state") == "failed" => ("验证未通过", "red", "attention"),
         "review" if text(&run["verify"], "state") == "passed" => ("任务完成，验证通过", "green", "result"),
         "review" => ("任务完成，未验证", "green", "result"),
+        "completed" => ("任务已完成", "green", "result"),
         "done" if run["mr"]["url"].as_str().is_some_and(|s| !s.is_empty()) => ("已创建 Merge Request", "green", "result"),
         _ => return None,
     };
@@ -60,7 +61,7 @@ pub fn transition(old: &Value, task: &Value, prefs: &Value) -> Option<Value> {
     if state == "review" || state == "failed" {
         lines.push(("改动", format!("{} 个文件", run["files"].as_array().map_or(0, Vec::len))));
     }
-    if state == "done" {
+    if state == "done" || (state == "completed" && !run["mr"].is_null()) {
         lines.push(("分支", text(run,"branch").to_owned()));
         lines.push(("链接", text(&run["mr"],"url").to_owned()));
     }

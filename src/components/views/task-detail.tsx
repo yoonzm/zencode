@@ -7,7 +7,7 @@ import { Code, FolderOpen, ArrowLeft, Calendar, Copy, Ellipsis, ExternalLink, Gi
 import { useApp } from "@/store/state";
 import { PRIORITY_LABEL } from "@/data/types";
 import { personName } from "@/data/identity";
-import { refreshDiff, openFolder, openInEditor, clearUnread, createMr, deleteTask, retryRun, setTab } from "@/store/actions";
+import { refreshDiff, openFolder, openInEditor, clearUnread, completeTask, mergeMr, createMr, deleteTask, retryRun, setTab } from "@/store/actions";
 import { toast } from "@/store/toast";
 import { useNow, isTyping } from "@/lib/hooks";
 import { dueLabel, fmtDuration } from "@/lib/time";
@@ -97,9 +97,10 @@ function Actions({ task }: { task: ZTask }) {
               <GitMerge />MR !{run.mr.iid}<ExternalLink className="opacity-60" />
             </Button>
           )}
-          <span className="inline-flex items-center gap-1.5 text-sm text-success"><Check className="size-4" />已提交 MR</span>
+          <Button variant="primary" loading={run.mrBusy} onClick={() => mergeMr(task.id)}><GitMerge />合并 MR</Button>
         </>
       )}
+      {s === "completed" && <>{run.mr && <Button variant="secondary" onClick={() => openExternal(run.mr!.url)}><GitMerge />MR !{run.mr.iid}<ExternalLink /></Button>}<span className="inline-flex items-center gap-1.5 text-sm text-success"><Check className="size-4" />已完成</span></>}
       {s === "failed" && (
         <>
           <Button variant="primary" onClick={() => retryRun(task.id)}><RotateCcw />重试</Button>
@@ -176,7 +177,7 @@ export function TaskDetail({ id, onBack }: { id: string; onBack?: () => void }) 
         { label: dirs.length > 1 ? "复制工作目录路径" : "复制路径", icon: Copy, disabled: noDir, onClick: () => copyText(dirs.map((d) => d.path).join("\n"), "已复制路径") },
       ]
     : [];
-  const due = task.deadline && task.run.state !== "done" ? dueLabel(task.deadline) : null;
+  const due = task.deadline && !["done", "completed"].includes(task.run.state) ? dueLabel(task.deadline) : null;
   const diffAdd = run.files.reduce((a, f) => a + f.add, 0);
   const diffDel = run.files.reduce((a, f) => a + f.del, 0);
 
@@ -211,7 +212,8 @@ export function TaskDetail({ id, onBack }: { id: string; onBack?: () => void }) 
                 { label: "复制分支名", icon: GitBranch, disabled: !run.branch, onClick: () => run.branch && copyText(run.branch, "已复制分支名") },
                 ...(task.manual ? [] : [{ label: "复制禅道链接", icon: Link, onClick: () => copyText(`${store.get().config.zentao.baseUrl}/${task.kind}-view-${task.no}.html`, "已复制禅道链接") }]),
                 { separator: true },
-                { label: "删除任务…", icon: Trash, danger: true, onClick: () => deleteTask(task.id) },
+                ...(run.state === "completed" ? [] : [{ label: "完成任务", icon: Check, onClick: () => completeTask(task.id) }]),
+                { label: "删除任务", icon: Trash, danger: true, onClick: () => deleteTask(task.id) },
               ]}
             />
           </div>

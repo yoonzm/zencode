@@ -7,6 +7,7 @@ export {
   LoaderCircle as Loader,
   TriangleAlert,
   CircleCheck,
+  CircleCheckBig,
   CircleAlert,
   Circle,
   CircleDashed,

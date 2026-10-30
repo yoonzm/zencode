@@ -68,7 +68,7 @@ function FilterChip<T extends string | number>({ label, options, value, onChange
 // ── 行 ───────────────────────────────────────────────────
 
 const TaskRow = memo(function TaskRow({ t, selected, compact, now }: { t: ZTask; selected: boolean; compact: boolean; now: number }) {
-  const due = t.deadline && !["done"].includes(t.run.state) ? dueLabel(t.deadline, now) : null;
+  const due = t.deadline && !["done", "completed"].includes(t.run.state) ? dueLabel(t.deadline, now) : null;
   return (
     <button
       role="option"
@@ -349,7 +349,7 @@ export function TaskListPane({ className }: { className?: string }) {
           label="状态"
           value={filters.states}
           onChange={(states) => setFilters({ states })}
-          options={(["waiting", "failed", "review", "running", "stopped", "queued", "idle", "done"] as RunState[]).map((s) => ({ value: s, label: STATE_LABEL[s], icon: <StateIcon state={s} className="size-3.5" /> }))}
+          options={(["waiting", "failed", "review", "running", "stopped", "queued", "idle", "done", "completed"] as RunState[]).map((s) => ({ value: s, label: STATE_LABEL[s], icon: <StateIcon state={s} className="size-3.5" /> }))}
         />
         <FilterChip<Priority>
           label="优先级"

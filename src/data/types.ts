@@ -8,6 +8,7 @@ export type RunState =
   | "waiting" // 等待你审批
   | "stopped" // 已停止
   | "review" // Codex 已完成，等待你审核
+  | "completed" // 已完成
   | "done" // 已提交 MR
   | "failed"; // 失败
 
@@ -163,7 +164,7 @@ export interface ZentaoConfig {
 export interface GitlabConfig {
   baseUrl: string;
   token: string;
-  targetBranch: string;
+  mrMode: "manual" | "auto-create" | "auto-merge";
   mrDraft: boolean;
   insecureTls?: boolean;
   connected: boolean;
@@ -208,6 +209,7 @@ export const STATE_LABEL: Record<RunState, string> = {
   stopped: "已停止",
   review: "待审核",
   done: "已提交",
+  completed: "已完成",
   failed: "失败",
 };
 

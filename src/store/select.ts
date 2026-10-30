@@ -5,7 +5,7 @@ import { EMPTY_FILTERS } from "./state";
 import { ME } from "@/data/identity";
 import { fuzzy } from "@/lib/fuzzy";
 
-export const GROUP_ORDER: RunState[] = ["waiting", "failed", "review", "running", "stopped", "queued", "idle", "done"];
+export const GROUP_ORDER: RunState[] = ["waiting", "failed", "review", "running", "stopped", "queued", "idle", "done", "completed"];
 
 export function filterTasks(tasks: ZTask[], f: Filters): ZTask[] {
   const q = f.query.trim();
@@ -65,6 +65,7 @@ export const PRESETS: Preset[] = [
   { id: "mine", label: "我的任务", filters: { assignee: "me" } },
   { id: "active", label: "执行中", filters: { states: ["running", "queued", "waiting", "stopped"] } },
   { id: "review", label: "待审核", filters: { states: ["review"] } },
+  { id: "completed", label: "已完成", filters: { states: ["completed"] } },
   { id: "done", label: "已提交", filters: { states: ["done"] } },
 ];
 

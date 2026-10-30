@@ -15,6 +15,7 @@ const PLACEHOLDER: Record<string, string> = {
   stopped: "告诉 Codex 接下来怎么做，或点上面的「继续」…",
   review: "要求修改，例如：补充边界用例、缩小改动范围…",
   done: "MR 已创建，仍可追加指令，Codex 会继续推送提交…",
+  completed: "已完成，仍可追加指令，Codex 会接着处理…",
   failed: "说明如何处理失败，或直接点「重试」…",
 };
 
