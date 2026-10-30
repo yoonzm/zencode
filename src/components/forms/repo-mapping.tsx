@@ -47,27 +47,15 @@ function Label({ children, error }: { children: React.ReactNode; error?: string 
   );
 }
 
-const urlsOf = (prompt: string) => [...new Set(prompt.match(/https?:\/\/[^\s，。）)、]+/g) ?? [])];
-
 function VerifySection({ m, onChange, config }: { m: RepoMapping; onChange: (v: VerifyConfig) => void; config: AppConfig }) {
   const v = verifyOf(m.verify);
   const [open, setOpen] = useState(false);
-  const empty = !v.prompt.trim();
-  const urls = urlsOf(v.prompt);
-  const lines = v.prompt.split("\n").filter((l) => l.trim()).length;
-  let summary = "";
-  if (!v.enabled) summary = "未启用，任务完成后不做验证";
-  else if (empty) summary = "还没写验证说明，现在只做代码自检";
-  else summary = `自定义验证 · ${urls.length ? urls.map((u) => u.replace(/^https?:\/\//, "")).slice(0, 2).join("、") + (urls.length > 2 ? ` 等 ${urls.length} 个环境` : "") : "未指定环境地址"} · ${lines} 行说明`;
-  const need = v.enabled && empty;
+  const need = v.enabled && !v.prompt.trim();
   return (
     <div className={cn("mt-3 flex items-center gap-2.5 rounded-lg border px-3 py-2", need ? "border-warning/40 bg-warning/8" : "border-border bg-muted/40")}>
       <ShieldCheck className={cn("size-4 shrink-0", v.enabled ? (need ? "text-warning" : "text-accent") : "text-subtle-foreground")} />
-      <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium text-foreground">验证</div>
-        <div className={cn("truncate text-xs", need ? "text-warning" : "text-muted-foreground")}>{summary}</div>
-      </div>
-      <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>{v.enabled && !empty ? "编辑" : need ? "去填写" : "设置"}</Button>
+      <span className="min-w-0 flex-1 text-sm font-medium text-foreground">验证</span>
+      <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>{need ? "去填写" : "编辑"}</Button>
       <Toggle checked={v.enabled} onChange={(b) => onChange({ ...v, enabled: b })} label="启用验证" />
       {open && <VerifyDialog m={m} config={config} value={v} onClose={() => setOpen(false)} onSave={(x) => { onChange(x); setOpen(false); }} />}
     </div>
@@ -78,7 +66,6 @@ function VerifyDialog({ m, value, config, onClose, onSave }: { m: RepoMapping; c
   const [text, setText] = useState(value.prompt);
   const [tool, setTool] = useState<"draft" | "trial" | null>(null);
   const cfg = { enabled: value.enabled, prompt: text };
-  const urls = urlsOf(text);
   const has = !!text.trim();
   const dirty = text !== value.prompt;
   return (
@@ -86,7 +73,7 @@ function VerifyDialog({ m, value, config, onClose, onSave }: { m: RepoMapping; c
       open
       onClose={() => { if (!tool) onClose(); }}
       size="lg"
-      className="sm:max-w-3xl"
+      className="sm:max-w-2xl"
       title={`验证 · ${m.product || "未选择产品"}`}
       description="AI 改完代码后，会按这里的说明把功能跑一遍，再给出结论。"
       footer={
@@ -102,36 +89,15 @@ function VerifyDialog({ m, value, config, onClose, onSave }: { m: RepoMapping; c
         </>
       }
     >
-      <div className="grid gap-4 md:grid-cols-[1fr_13rem]">
-        <div className="min-w-0">
-          <textarea
-            value={text}
-            onChange={(ev) => setText(ev.target.value)}
-            rows={16}
-            spellCheck={false}
-            aria-label="验证说明"
-            placeholder="告诉 AI 怎么验证：在哪里跑（本机或测试环境地址）、怎么启动和登录、重点看什么、用浏览器还是接口。留空则只做代码自检。"
-            className="block h-[22rem] max-h-[60vh] w-full resize-y rounded-md border border-input bg-background px-3 py-2.5 font-mono text-[13px] leading-[1.65] text-foreground outline-none placeholder:font-sans placeholder:text-subtle-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
-          />
-        </div>
-        <aside className="flex min-w-0 flex-col gap-3 text-xs">
-          <div>
-            <div className="mb-1.5 font-medium text-muted-foreground">说明摘要</div>
-            {has ? (
-              <dl className="space-y-2 rounded-md bg-muted/50 p-2.5">
-                <div><dt className="text-subtle-foreground">验证方式</dt><dd className="mt-0.5 text-foreground">按说明制定验证计划</dd></div>
-                <div>
-                  <dt className="text-subtle-foreground">测试环境</dt>
-                  <dd className="mt-0.5 space-y-0.5 break-all text-foreground">{urls.length ? urls.map((u) => <div key={u}>{u}</div>) : "说明中未指定环境地址"}</dd>
-                </div>
-              </dl>
-            ) : (
-              <p className="rounded-md bg-muted/50 p-2.5 leading-5 text-muted-foreground">还没写说明，只做代码自检，不会启动服务。</p>
-            )}
-          </div>
-          <p className="leading-5 text-subtle-foreground">可以写多个测试环境，AI 会按说明里的顺序依次验证。</p>
-        </aside>
-      </div>
+      <textarea
+        value={text}
+        onChange={(ev) => setText(ev.target.value)}
+        rows={16}
+        spellCheck={false}
+        aria-label="验证说明"
+        placeholder="告诉 AI 怎么验证：在哪里跑（本机或测试环境地址）、怎么启动和登录、重点看什么、用浏览器还是接口。留空则只做代码自检。"
+        className="block h-[24rem] max-h-[60vh] w-full resize-y rounded-md border border-input bg-background px-3 py-2.5 font-mono text-[13px] leading-[1.65] text-foreground outline-none placeholder:font-sans placeholder:text-subtle-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
+      />
       {mappingHasError(m) && <p className="mt-3 text-xs text-muted-foreground">选择产品、仓库和分支后可生成草稿或试运行。</p>}
       {tool && <VerificationToolDialog mode={tool} mapping={{ ...m, verify: cfg }} config={config} onApply={setText} onClose={() => setTool(null)} />}
     </Modal>
