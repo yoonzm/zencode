@@ -21,6 +21,7 @@ npm run package
 ## Runtime
 
 - Native OS window decorations provide the window controls. Platform appearance and shortcut labels follow the actual runtime platform; prototype platform overrides are no longer restored.
+- Closing the main window hides ZenCode to the system tray and keeps background tasks running. Click the tray icon, choose “打开 ZenCode”, or launch ZenCode again to restore the window. Choose “退出” from the tray menu to quit and stop background workers; updater restarts still use the normal shutdown path.
 - ZenTao and GitLab each offer an opt-in **Advanced > Skip certificate verification** setting (off by default). It applies only to that service's API client, including authentication, synchronization, attachments and MR API requests. Certificate failures reveal the setting; successful tests identify when verification was skipped. Git push retains the local Git TLS configuration. No global TLS or Git settings are changed.
 - Rust performs HTTP requests, Git operations and the Codex app-server JSON-RPC protocol. There is no bundled Node/Electron server.
 - Windows credentials use Credential Manager; macOS uses Keychain through keyring. Credentials are never saved in renderer localStorage. Linux credential persistence is explicitly unsupported in this release.
