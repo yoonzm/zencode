@@ -7,6 +7,7 @@ import { personName } from "@/data/identity";
 import { fmtDate, relTime } from "@/lib/time";
 import { Avatar } from "@/components/ui/status";
 import { toast } from "@/store/toast";
+import { ZentaoRichText } from "./zentao-rich-text";
 
 function Block({ title, children }: { title?: string; children: any }) {
   return (
@@ -57,18 +58,18 @@ export function ZentaoTab({ task }: { task: ZTask }) {
   return (
     <div className="h-full overflow-y-auto px-5 py-5">
       <div className="mx-auto grid max-w-3xl gap-8 @4xl:grid-cols-[1fr_15rem]">
-        <div className="selectable space-y-5 text-sm leading-[1.7] text-foreground">
+        <div className="selectable min-w-0 space-y-5 text-sm leading-[1.7] text-foreground">
           {task.description.map((b, i) => (
             <Block key={i} title={b.title}>
-              {b.type === "p" && <p className="text-foreground/90">{b.text}</p>}
+              {b.type === "p" && <ZentaoRichText html={b.text ?? ""} taskId={task.id} />}
               {b.type === "steps" && (
                 <ol className="list-decimal space-y-1 pl-5 marker:text-subtle-foreground">
-                  {b.items!.map((s, k) => <li key={k}>{s}</li>)}
+                  {b.items!.map((s, k) => <li key={k}><ZentaoRichText html={s} taskId={task.id} /></li>)}
                 </ol>
               )}
               {b.type === "list" && (
                 <ul className="list-disc space-y-1 pl-5 marker:text-subtle-foreground">
-                  {b.items!.map((s, k) => <li key={k}>{s}</li>)}
+                  {b.items!.map((s, k) => <li key={k}><ZentaoRichText html={s} taskId={task.id} /></li>)}
                 </ul>
               )}
               {b.type === "kv" && (
@@ -76,7 +77,7 @@ export function ZentaoTab({ task }: { task: ZTask }) {
                   {b.rows!.map(([k, v]) => (
                     <div key={k} className="contents">
                       <dt className="text-muted-foreground">{k}</dt>
-                      <dd>{v}</dd>
+                      <dd><ZentaoRichText html={v} taskId={task.id} /></dd>
                     </div>
                   ))}
                 </dl>
@@ -104,7 +105,7 @@ export function ZentaoTab({ task }: { task: ZTask }) {
           )}
         </div>
 
-        <aside className="space-y-6 text-sm">
+        <aside className="min-w-0 space-y-6 text-sm">
           <dl className="space-y-2.5">
             {fields.map(([k, v]) => (
               <div key={k} className="flex items-baseline justify-between gap-3">
@@ -119,7 +120,8 @@ export function ZentaoTab({ task }: { task: ZTask }) {
               {task.history.slice().reverse().map((h, i) => (
                 <li key={i} className="relative text-xs leading-5 text-muted-foreground">
                   <span className="absolute -left-[16.5px] top-1.5 size-1.5 rounded-full bg-border-strong" aria-hidden />
-                  <span className="text-foreground">{h.who}</span> {h.text}
+                  <span className="text-foreground">{h.who}</span>
+                  <ZentaoRichText html={h.text} taskId={task.id} />
                   <span className="block text-subtle-foreground">{relTime(h.at)}</span>
                 </li>
               ))}

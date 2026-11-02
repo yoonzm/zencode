@@ -34,12 +34,14 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
     for (const rule of ['Playwright', 'headless: true', 'connectOverCDP', '禁止使用 Computer Use', 'unverified']) {
       if (!p.developerInstructions.includes(rule)) throw Error('Missing isolated headless browser policy: ' + rule);
     }
+  require('node:fs').appendFileSync('policies.log',JSON.stringify(p.developerInstructions)+'\n');
   send({id:r.id,result:{thread:{id:'fixture'}}});
  }
  if(m==='turn/start') {
   if(p.model !== 'fixture-model' || p.effort !== 'ultra') throw Error('Model/effort not forwarded');
   const id='turn-'+(++seq), prompt=p.input[0].text;
   require('node:fs').appendFileSync('prompts.log',JSON.stringify(prompt)+'\n');
+  require('node:fs').appendFileSync('inputs.log',JSON.stringify(p.input)+'\n');
   send({id:r.id,result:{turn:{id}}});
   if(require('node:fs').existsSync('live-diff.txt')) return;
   if(prompt.startsWith('live-diff-')) {
@@ -49,9 +51,19 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
    else send({method:'item/completed',params:{item:{id:'edit',type,command:'edit',exitCode:0}}});
    return;
   }
-  if(prompt==='stop-fixture') return;
-  if(prompt==='queue-fixture') { setTimeout(()=>send({method:'turn/completed',params:{turn:{id,status:'completed'}}}),500); return; }
+  if(prompt.split('\n')[0]==='stop-fixture') return;
+  if(prompt.split('\n')[0]==='queue-fixture') { setTimeout(()=>send({method:'turn/completed',params:{turn:{id,status:'completed'}}}),500); return; }
+  if(require('node:fs').readFileSync('policies.log','utf8').includes('context-usage-fixture')) {
+   const tokenUsage={last:{totalTokens:seq===1?45000:seq===2?47000:12000},total:{totalTokens:950000},modelContextWindow:475000};
+   send({method:'thread/tokenUsage/updated',params:{threadId:'fixture',turnId:id,tokenUsage}});
+   send({method:'thread/tokenUsage/updated',params:{threadId:'other-thread',turnId:id,tokenUsage:{...tokenUsage,last:{totalTokens:999999}}}});
+   send({method:'thread/tokenUsage/updated',params:{threadId:'fixture',turnId:id,tokenUsage:{...tokenUsage,last:{totalTokens:-1}}}});
+  }
   const plan=prompt.includes('不执行验证');
+  if(plan && require('node:fs').readFileSync('policies.log','utf8').includes('no-extra-verification')) {
+   send({method:'item/completed',params:{item:{id:'msg-'+seq,type:'agentMessage',text:JSON.stringify({state:'unverified',verificationRequired:false,summary:'Only documentation changed; no extra verification needed',steps:[]})}}});
+   send({method:'turn/completed',params:{turn:{id,status:'completed'}}}); return;
+  }
   const result={state:'passed',summary:'fixture report',steps:[{id:'1',title:'Check fixture',expect:'ok',status:plan?'pending':'passed',note:plan?'':'fixture evidence'}]};
   send({method:'item/completed',params:{item:{id:'msg-'+seq,type:'agentMessage',text:JSON.stringify(result)}}});
   send({method:'turn/completed',params:{turn:{id,status:'completed'}}});
@@ -91,6 +103,42 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
 }
 
 #[tokio::test]
+async fn images_reach_codex_on_start_queue_resume_and_survive_restart() {
+    let (_dir, rt, mut config) = fixture().await;
+    config["mappings"][0]["verify"]["enabled"] = json!(false);
+    let image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=";
+    rt.call("start", json!({"id":"bug-1","config":config,"instruction":"queue-fixture","images":[image]})).await.unwrap();
+    wait(&rt, "running").await;
+    rt.call("start", json!({"id":"bug-1","config":config,"images":[image]})).await.unwrap();
+    let task = wait(&rt, "review").await;
+    let repo = std::path::Path::new(task["run"]["worktree"].as_str().unwrap());
+    let inputs: Vec<Value> = std::fs::read_to_string(repo.join("inputs.log")).unwrap().lines().map(|line| serde_json::from_str(line).unwrap()).collect();
+    assert_eq!(inputs.len(), 4);
+    for input in &inputs[..2] { assert_eq!(input[1], json!({"type":"image","url":image})); }
+    assert_eq!(inputs[1][0]["text"], ""); // Image-only follow-up is allowed.
+    let events = task["run"]["events"].as_array().unwrap();
+    assert_eq!(events.iter().filter(|e| e["kind"] == "user" && e["images"][0] == image).count(), 2);
+    rt.shutdown().await;
+    let root = _dir.path().join("data");
+    let recovered = Runtime::new(root.clone(), Arc::new(|_,_| {})).unwrap();
+    assert!(recovered.data.lock().await["tasks"][0]["run"]["events"].as_array().unwrap().iter().any(|e| e["images"][0] == image));
+    // A queued attachment saved by an interrupted session must be forwarded on resume.
+    let mut data = recovered.data.lock().await;
+    data["tasks"][0]["history"] = json!([{"at":1,"who":"alice","text":"备注中的验收要求"}]);
+    data["tasks"][0]["run"]["pendingInstructions"] = json!([{"text":"saved follow-up","images":[image]}]);
+    Storage::new(&root).save(&data).unwrap();
+    drop(data);
+    recovered.call("start", json!({"id":"bug-1","config":config})).await.unwrap();
+    wait(&recovered, "review").await;
+    let inputs: Vec<Value> = std::fs::read_to_string(repo.join("inputs.log")).unwrap().lines().map(|line| serde_json::from_str(line).unwrap()).collect();
+    let last = inputs.iter().rev().find(|input| input.as_array().unwrap().len() > 1).unwrap();
+    assert_eq!(last[1]["url"], image);
+    assert!(last[0]["text"].as_str().unwrap().contains("备注中的验收要求"));
+    assert!(last[0]["text"].as_str().unwrap().contains("saved follow-up"));
+    recovered.shutdown().await;
+}
+
+#[tokio::test]
 async fn diff_is_published_during_edits_and_before_verification() {
     for trigger in ["fileChange", "commandExecution", "turn"] {
         let (_dir, rt, config) = fixture().await;
@@ -118,11 +166,11 @@ async fn verification_plan_runs_automatically() {
 }
 
 #[tokio::test]
-async fn disabled_verification_does_not_wait_for_plan() {
+async fn legacy_disabled_switch_no_longer_blocks_verification() {
     let (_dir,rt,mut config) = fixture().await;
     config["mappings"][0]["verify"]["enabled"] = json!(false);
     rt.call("start",json!({"id":"bug-1","config":config})).await.unwrap();
-    assert_eq!(wait(&rt,"review").await["run"]["verify"]["state"],"unverified");
+    assert_eq!(wait(&rt,"review").await["run"]["verify"]["state"],"passed");
     rt.shutdown().await;
 }
 
@@ -135,7 +183,10 @@ async fn queued_message_runs_in_next_turn() {
     rt.call("start",json!({"id":"bug-1","config":config,"instruction":"follow-up"})).await.unwrap();
     wait(&rt,"review").await;
     let prompts = std::fs::read_to_string(dir.path().join("repo/prompts.log")).unwrap();
-    assert_eq!(prompts.lines().collect::<Vec<_>>(), vec!["\"queue-fixture\"", "\"follow-up\""]);
+    let prompts: Vec<String> = prompts.lines().map(|line| serde_json::from_str(line).unwrap()).collect();
+    assert!(prompts[0].starts_with("queue-fixture\n"));
+    assert_eq!(prompts[1], "follow-up");
+    assert_eq!(prompts.len(), 4);
     assert_eq!(rt.data.lock().await["tasks"][0]["run"]["pendingInstructions"],json!([]));
     rt.shutdown().await;
 }
@@ -171,7 +222,7 @@ async fn stop_preserves_pending_message_for_continue() {
     resumed.call("start",json!({"id":"bug-1","config":config})).await.unwrap();
     wait(&resumed,"review").await;
     let prompts = std::fs::read_to_string(dir.path().join("repo/prompts.log")).unwrap();
-    assert!(prompts.lines().any(|line| line == "\"after-stop\""));
+    assert!(prompts.lines().any(|line| serde_json::from_str::<String>(line).unwrap().starts_with("after-stop\n")));
     resumed.shutdown().await;
 }
 
@@ -182,4 +233,58 @@ async fn models_follow_all_catalog_pages() {
     assert_eq!(models.as_array().unwrap().len(), 2);
     assert_eq!(models[1]["model"], "second");
     assert_eq!(models[0]["supportedReasoningEfforts"][0]["reasoningEffort"], "ultra");
+}
+
+#[tokio::test]
+async fn project_prompt_reaches_start_resume_and_verification_and_can_skip() {
+    for (resume, prompt) in [(false, "project-development-rules"), (true, "no-extra-verification")] {
+        let (dir, rt, mut config) = fixture().await;
+        config["mappings"][0]["projectPrompt"] = json!(prompt);
+        if !resume { rt.data.lock().await["tasks"][0]["run"]["threadId"] = json!(""); }
+        rt.call("start", json!({"id":"bug-1","config":config})).await.unwrap();
+        let task = wait(&rt,"review").await;
+        assert_eq!(task["run"]["verify"]["state"], if resume { "unverified" } else { "passed" });
+        let policies = std::fs::read_to_string(dir.path().join("repo/policies.log")).unwrap();
+        assert!(policies.contains(prompt));
+        assert!(!policies.contains("Check fixture"));
+        let prompts: Vec<String> = std::fs::read_to_string(dir.path().join("repo/prompts.log")).unwrap().lines().map(|line| serde_json::from_str(line).unwrap()).collect();
+        assert_eq!(prompts.len(), if resume { 2 } else { 3 });
+        assert!(prompts[1].contains(prompt));
+        if !resume { assert!(prompts[2].contains(prompt)); }
+        else { assert_eq!(task["run"]["verify"]["verificationRequired"], false); }
+        rt.shutdown().await;
+    }
+}
+
+#[tokio::test]
+async fn empty_project_prompt_still_assesses_and_runs_verification() {
+    let (_dir, rt, mut config) = fixture().await;
+    config["mappings"][0]["projectPrompt"] = json!("");
+    config["mappings"][0]["verify"]["enabled"] = json!(false);
+    rt.call("start",json!({"id":"bug-1","config":config})).await.unwrap();
+    wait(&rt,"review").await;
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            match rt.call("reverify",json!({"id":"bug-1","config":config})).await {
+                Ok(_) => break,
+                Err(error) => assert!(error.contains("执行正在收尾"), "{error}"),
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    }).await.unwrap();
+    assert_eq!(wait(&rt,"review").await["run"]["verify"]["state"],"passed");
+    rt.shutdown().await;
+}
+
+#[tokio::test]
+async fn context_usage_updates_across_phases_and_survives_restart() {
+    let (dir, rt, mut config)=fixture().await;
+    config["mappings"][0]["projectPrompt"]=json!("context-usage-fixture");
+    rt.call("start",json!({"id":"bug-1","config":config})).await.unwrap();
+    let task=wait(&rt,"review").await;
+    assert_eq!(task["run"]["contextUsage"],json!({"usedTokens":12000,"contextWindow":475000}));
+    rt.shutdown().await;
+    let restored=Runtime::new(dir.path().join("data"),Arc::new(|_,_| {})).unwrap();
+    assert_eq!(restored.data.lock().await["tasks"][0]["run"]["contextUsage"],task["run"]["contextUsage"]);
+    restored.shutdown().await;
 }

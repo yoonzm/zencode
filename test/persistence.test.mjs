@@ -13,7 +13,7 @@ test('failed credential persistence does not retry on toast updates and supports
  assert.deepEqual(store.get().feishu,{enabled:false,webhook:'',secret:'',attention:true,result:true});
  assert.equal(store.get().config.zentao.syncIntervalMin,5);
  assert.equal(store.get().config.zentao.autoRun,true);
- assert.deepEqual(store.get().config.mappings,[{id:'legacy',product:'P',repos:[{id:'legacy-repo',repo:'team/app',branch:'develop',role:'',testCmd:'npm test'}]}]);
+ assert.deepEqual(store.get().config.mappings,[{id:'legacy',product:'P',projectPrompt:'',repos:[{id:'legacy-repo',repo:'team/app',branch:'develop',role:'',testCmd:'npm test'}]}]);
  assert.equal(store.get().config.zentao.baseUrl,'https://zentao.example');
  store.set({sidebarOpen:false});await assert.rejects(flushPrefs(),/Vault unavailable/);assert.equal(saves,1);assert.equal(savedPrefs.platformPref,undefined);assert.equal(savedPrefs.windowControls,undefined);
  store.set({toasts:[]});await new Promise(r=>setTimeout(r,10));assert.equal(saves,1);

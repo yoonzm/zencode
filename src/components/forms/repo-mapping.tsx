@@ -1,13 +1,12 @@
 import { Modal } from "@/components/ui/dialog";
 import { useEffect, useState } from "react";
-import { Plus, Trash, FolderGit, RefreshCw, Sparkles, X, Play, ShieldCheck } from "@/lib/icons";
+import { Plus, Trash, FolderGit, RefreshCw, Sparkles, X, Play, FileText } from "@/lib/icons";
 import type { AppConfig, AiSuggestion, RepoLink, RepoMapping } from "@/data/types";
 import { desktopCall } from "@/lib/desktop";
 import { Button } from "@/components/ui/button";
-import { Combobox, Toggle } from "@/components/ui/fields";
+import { Combobox } from "@/components/ui/fields";
 import { toast } from "@/store/toast";
-import { verifyOf } from "@/data/verify";
-import type { VerifyConfig } from "@/data/types";
+import { projectPromptOf } from "@/data/project-prompt";
 import { Tip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/ui/empty";
 import { cn, uid } from "@/lib/utils";
@@ -47,59 +46,47 @@ function Label({ children, error }: { children: React.ReactNode; error?: string 
   );
 }
 
-function VerifySection({ m, onChange, config }: { m: RepoMapping; onChange: (v: VerifyConfig) => void; config: AppConfig }) {
-  const v = verifyOf(m.verify);
+function ProjectPromptSection({ m, onChange, config }: { m: RepoMapping; onChange: (prompt: string) => void; config: AppConfig }) {
+  const value = projectPromptOf(m);
   const [open, setOpen] = useState(false);
-  const need = v.enabled && !v.prompt.trim();
   return (
-    <div className={cn("mt-3 flex items-center gap-2.5 rounded-lg border px-3 py-2", need ? "border-warning/40 bg-warning/8" : "border-border bg-muted/40")}>
-      <ShieldCheck className={cn("size-4 shrink-0", v.enabled ? (need ? "text-warning" : "text-accent") : "text-subtle-foreground")} />
-      <span className="min-w-0 flex-1 text-sm font-medium text-foreground">验证</span>
-      <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>{need ? "去填写" : "编辑"}</Button>
-      <Toggle checked={v.enabled} onChange={(b) => onChange({ ...v, enabled: b })} label="启用验证" />
-      {open && <VerifyDialog m={m} config={config} value={v} onClose={() => setOpen(false)} onSave={(x) => { onChange(x); setOpen(false); }} />}
+    <div className="mt-3 flex items-center gap-2.5 rounded-lg border border-border bg-muted/40 px-3 py-2">
+      <FileText aria-hidden="true" className="size-4 shrink-0 text-accent" />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-foreground">项目专有提示词</p>
+        <p className="text-xs text-muted-foreground">{value.trim() ? "已配置 · 各阶段按需使用环境、开发和测试约定" : "可填写环境、开发和测试约定；AI 自动判断验证需求"}</p>
+      </div>
+      <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>{value.trim() ? "编辑" : "填写"}</Button>
+      {open && <ProjectPromptDialog m={m} config={config} value={value} onClose={() => setOpen(false)} onSave={(x) => { onChange(x); setOpen(false); }} />}
     </div>
   );
 }
 
-function VerifyDialog({ m, value, config, onClose, onSave }: { m: RepoMapping; config: AppConfig; value: VerifyConfig; onClose: () => void; onSave: (v: VerifyConfig) => void }) {
-  const [text, setText] = useState(value.prompt);
+function ProjectPromptDialog({ m, value, config, onClose, onSave }: { m: RepoMapping; config: AppConfig; value: string; onClose: () => void; onSave: (v: string) => void }) {
+  const [text, setText] = useState(value);
   const [tool, setTool] = useState<"draft" | "trial" | null>(null);
-  const cfg = { enabled: value.enabled, prompt: text };
-  const has = !!text.trim();
-  const dirty = text !== value.prompt;
+  const dirty = text !== value;
   return (
-    <Modal
-      open
-      onClose={() => { if (!tool) onClose(); }}
-      size="lg"
-      className="sm:max-w-2xl"
-      title={`验证 · ${m.product || "未选择产品"}`}
-      description="AI 改完代码后，会按这里的说明把功能跑一遍，再给出结论。"
-      footer={
-        <>
-          <div className="mr-auto flex items-center gap-1">
-            <Button variant="ghost" size="sm" disabled={mappingHasError(m)} onClick={() => setTool("draft")}><Sparkles />AI 生成草稿</Button>
-            <Button variant="ghost" size="sm" disabled={mappingHasError(m) || !has} onClick={() => setTool("trial")}>
-              <Play />试运行
-            </Button>
-          </div>
-          <Button variant="ghost" onClick={onClose}>取消</Button>
-          <Button variant="primary" disabled={!dirty} onClick={() => onSave(cfg)}>保存</Button>
-        </>
-      }
+    <Modal open onClose={() => { if (!tool) onClose(); }} size="lg" className="max-h-[90dvh] overflow-y-auto sm:max-w-5xl"
+      title={`项目专有提示词 · ${m.product || "未选择产品"}`}
+      description="在任务分析、开发、自检和验证阶段按需使用。AI 会结合提示词与本次改动判断是否需要验证，并制定步骤。"
+      footer={<>
+        <div className="mr-auto flex items-center gap-1">
+          <Button variant="ghost" size="sm" disabled={mappingHasError(m)} onClick={() => setTool("draft")}><Sparkles />AI 生成草稿</Button>
+          <Button variant="ghost" size="sm" disabled={mappingHasError(m)} onClick={() => setTool("trial")}><Play />试运行验证</Button>
+        </div>
+        <Button variant="ghost" onClick={onClose}>取消</Button>
+        <Button variant="primary" disabled={!dirty} onClick={() => onSave(text)}>保存</Button>
+      </>}
     >
-      <textarea
-        value={text}
-        onChange={(ev) => setText(ev.target.value)}
-        rows={16}
-        spellCheck={false}
-        aria-label="验证说明"
-        placeholder="告诉 AI 怎么验证：在哪里跑（本机或测试环境地址）、怎么启动和登录、重点看什么、用浏览器还是接口。留空则只做代码自检。"
-        className="block h-[24rem] max-h-[60vh] w-full resize-y rounded-md border border-input bg-background px-3 py-2.5 font-mono text-[13px] leading-[1.65] text-foreground outline-none placeholder:font-sans placeholder:text-subtle-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
+      <label htmlFor="project-prompt" className="mb-2 block text-sm font-medium">环境、开发与测试约定</label>
+      <textarea id="project-prompt" value={text} onChange={(ev) => setText(ev.target.value)} rows={16} spellCheck={false}
+        placeholder={"## 开发前准备\n依赖版本、本地路径、启动方式、测试环境地址。\n\n## 如何开发\n代码风格、目录规范、需要遵守的项目约定。\n\n## 如何验证\n何时需要验证、测试命令、操作步骤和预期结果。"}
+        className="block h-[60dvh] min-h-48 max-h-[calc(90dvh-15rem)] w-full resize-y rounded-md border border-input bg-background px-3 py-2.5 font-mono text-[13px] leading-[1.65] text-foreground outline-none placeholder:font-sans placeholder:text-subtle-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
       />
+      <p className="mt-2 text-xs text-muted-foreground">留空时，AI 根据仓库资料和本次改动判断。试运行仅检查验证流程，不执行开发改动。</p>
       {mappingHasError(m) && <p className="mt-3 text-xs text-muted-foreground">选择产品、仓库和分支后可生成草稿或试运行。</p>}
-      {tool && <VerificationToolDialog mode={tool} mapping={{ ...m, verify: cfg }} config={config} onApply={setText} onClose={() => setTool(null)} />}
+      {tool && <VerificationToolDialog mode={tool} mapping={{ ...m, projectPrompt: text }} config={config} onApply={setText} onClose={() => setTool(null)} />}
     </Modal>
   );
 }
@@ -144,7 +131,7 @@ export function RepoMappingEditor({ value, onChange, showErrors, config }: { val
   const updateLink = (mid: string, rid: string, patch: Partial<RepoLink>) => updateMap(mid, (m) => ({ ...m, repos: m.repos.map((r) => (r.id === rid ? { ...r, ...patch } : r)) }));
   const used = new Set(value.map((m) => m.product));
 
-  const addMapping = () => onChange([...value, { id: uid("m"), product: products.find((p) => !used.has(p)) ?? "", repos: [newLink()], verify: verifyOf() }]);
+  const addMapping = () => onChange([...value, { id: uid("m"), product: products.find((p) => !used.has(p)) ?? "", repos: [newLink()], projectPrompt: "" }]);
 
   const applyAi = (picked: AiSuggestion[]) => {
     let next = value.map((m) => ({ ...m, repos: [...m.repos] }));
@@ -235,7 +222,7 @@ export function RepoMappingEditor({ value, onChange, showErrors, config }: { val
                 <Button variant="ghost" size="sm" className="mt-2" onClick={() => updateMap(m.id, (x) => ({ ...x, repos: [...x.repos, newLink()] }))}>
                   <Plus />添加仓库
                 </Button>
-                <VerifySection m={m} config={cfg} onChange={(v) => updateMap(m.id, (x) => ({ ...x, verify: v }))} />
+                <ProjectPromptSection m={m} config={cfg} onChange={(v) => updateMap(m.id, (x) => ({ ...x, projectPrompt: v }))} />
               </li>
             );
           })}

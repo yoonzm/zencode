@@ -1,6 +1,7 @@
 mod reports;
 mod feishu;
 mod manual;
+mod input_images;
 pub mod codex;
 mod cleanup;
 mod matching;

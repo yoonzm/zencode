@@ -54,7 +54,10 @@ async fn real_clone_draft_trial_approval_and_cleanup() {
     let f=fixture().await;
     let id=start(&f,"draft",&f.mapping).await;
     let s=wait(&f,&id,"done").await;
-    assert!(s["result"]["prompt"].as_str().unwrap().contains("npm run verify-real-branch"));
+    let prompt=s["result"]["prompt"].as_str().unwrap();
+    assert!(prompt.contains("npm run verify-real-branch"));
+    assert!(prompt.find("## 开发前准备").unwrap() < prompt.find("## 如何开发").unwrap());
+    assert!(prompt.find("## 如何开发").unwrap() < prompt.find("## 如何验证").unwrap());
     assert_eq!(s["sources"][0]["branch"],"main");
     assert!(!f.root.join("verification-tools").join(&id).exists());
     let id=start(&f,"trial",&f.mapping).await;
@@ -90,4 +93,21 @@ async fn skipped_cancelled_failed_and_invalid_trials_never_pass() {
     let mut mapping=f.mapping.clone(); mapping["repos"][0]["branch"]=json!("missing-branch");
     let id=start(&f,"draft",&mapping).await;
     assert!(wait(&f,&id,"error").await["result"].is_null());
+}
+
+#[tokio::test]
+async fn trial_uses_project_prompt_and_accepts_empty_or_no_verification_decision() {
+    let f=fixture().await;
+    let mut mapping=f.mapping.clone();
+    mapping["projectPrompt"]=json!("no-extra-verification");
+    mapping["verify"]["prompt"]=json!("force-fail");
+    let id=start(&f,"trial",&mapping).await;
+    let result=wait(&f,&id,"done").await;
+    assert_eq!(result["result"]["verify"]["verificationRequired"],false);
+    assert_eq!(result["result"]["verify"]["state"],"unverified");
+    mapping["projectPrompt"]=json!("");
+    let id=start(&f,"trial",&mapping).await;
+    let approval=wait(&f,&id,"approval").await;
+    decide(&f,&id,&approval,true).await;
+    assert_eq!(wait(&f,&id,"done").await["result"]["verify"]["state"],"passed");
 }

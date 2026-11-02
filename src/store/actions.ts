@@ -140,9 +140,9 @@ export function deleteTask(id: string) {
 }
 export function retryRun(id: string) { startRun(id); }
 export function decideApproval(id: string, evId: string, decision: "once" | "always" | "deny") { void runCall("approve", { id, evId, decision }); }
-export async function sendInstruction(id: string, text: string, ref?: string) {
+export async function sendInstruction(id: string, text: string, ref?: string, images: string[] = []) {
   try {
-    await desktopCall("start", { id, config: store.get().config, instruction: [ref, text].filter(Boolean).join("\n") });
+    await desktopCall("start", { id, config: store.get().config, instruction: [ref, text].filter(Boolean).join("\n"), images });
     return true;
   } catch (e) { report(e); return false; }
 }
@@ -156,7 +156,6 @@ export function createMr(id: string) { return runCall("mr", { id }); }
 export function openExternal(url: string) { void desktopCall("open", { url }).catch(report); }
 export function decodeTask(t: ZTask): ZTask {
   if ((t.run.state as string) === "paused") t.run.state = "stopped";
-  if (!t.manual) t.description = t.description.map(b => b.text ? { ...b, text: new DOMParser().parseFromString(b.text, "text/html").body.textContent || "" } : b);
   const raw = (t.run as any).rawDiff as string | undefined;
   if (raw != null) t.run.files = raw.split(/^diff --git /m).slice(1).map(part => {
     const lines = part.split("\n");

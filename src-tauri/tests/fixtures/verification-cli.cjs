@@ -26,10 +26,12 @@ readline.createInterface({input: process.stdin}).on('line', line => {
     if (prompt.includes('最终只输出说明正文')) {
       const policy = JSON.parse(fs.readFileSync('session-policy.json'));
       if (policy.sandbox !== 'read-only') throw Error('Draft not read-only');
-      finish(id, `Run ${readme.trim()} (repo-1/README.md)`);
+      for (const heading of ['## 开发前准备', '## 如何开发', '## 如何验证']) { if (!prompt.includes(heading)) throw Error('Missing project prompt section: ' + heading); }
+      finish(id, `## 开发前准备\n1. Read repo-1/README.md.\n\n## 如何开发\n2. Follow repository conventions.\n\n## 如何验证\n3. Run ${readme.trim()} (repo-1/README.md)`);
       return;
     }
     const plan = prompt.includes('不执行验证');
+    if (plan && prompt.includes('no-extra-verification')) { finish(id, JSON.stringify({state:'unverified',verificationRequired:false,summary:'No additional verification for this trial',steps:[]})); return; }
     if (!plan && prompt.includes('wait-forever')) return;
     const status = prompt.includes('force-fail') ? 'failed' : 'passed';
     const result = prompt.includes('invalid-report') ? 'not JSON' : JSON.stringify({state: status, summary: 'fixture execution', steps: [{id: '1', title: 'Test README command', expect: readme.trim(), status: plan ? 'pending' : status, note: plan ? '' : 'Actual fixture output'}]});

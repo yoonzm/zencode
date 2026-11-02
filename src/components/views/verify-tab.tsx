@@ -50,8 +50,8 @@ export function VerifyTab({ task }: { task: ZTask }) {
     return (
       <EmptyState
         icon={ShieldCheck}
-        title={state === "idle" ? "还没有验证记录" : state === "running" || state === "queued" ? "改完代码后按产品配置验证" : "没有验证记录"}
-        desc="启用产品验证并填写验证说明后，Codex 会执行相关流程并报告实际结果。"
+        title={state === "idle" ? "还没有验证记录" : state === "running" || state === "queued" ? "改完代码后评估验证需求" : "没有验证记录"}
+        desc="Codex 根据项目专有提示词和本次改动判断验证需求，执行必要步骤并报告实际结果。"
         className="h-full"
       />
     );
@@ -66,7 +66,7 @@ export function VerifyTab({ task }: { task: ZTask }) {
         <section className="flex items-start gap-3">
           <Icon className={cn("mt-0.5 size-5 shrink-0", tone, busy && v.state !== "awaiting-plan" && "animate-spin")} />
           <div className="min-w-0 flex-1">
-            <h3 role="status" className={cn("text-base font-semibold", tone)}>{VERIFY_LABEL[v.state]}</h3>
+            <h3 role="status" className={cn("text-base font-semibold", tone)}>{v.verificationRequired === false ? "无需额外验证" : VERIFY_LABEL[v.state]}</h3>
             {v.summary && <p className="mt-1 text-sm leading-[1.7] text-foreground/90">{v.summary}</p>}
             <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
               {v.target && <span className="inline-flex items-center gap-1">{v.where === "server" ? <Server className="size-3.5" /> : <Globe className="size-3.5" />}{v.where === "server" ? "测试服务器" : "本机"} · <span className="font-mono">{v.target}</span></span>}
@@ -81,7 +81,7 @@ export function VerifyTab({ task }: { task: ZTask }) {
         {busy && <Progress v={v} />}
 
         {v.state === "unverified" && !v.steps.length && (
-          <button className="text-sm text-accent underline-offset-2 hover:underline" onClick={() => navigate({ name: "prefs", section: "repos" } as any)}>去产品里补充验证说明</button>
+          <button className="text-sm text-accent underline-offset-2 hover:underline" onClick={() => navigate({ name: "prefs", section: "repos" } as any)}>编辑项目专有提示词</button>
         )}
 
 

@@ -17,7 +17,7 @@ export interface ToolStatus {
 
 export function VerificationResult({ v }: { v: Verify }) {
   return <section className="space-y-2">
-    <h4 className="text-sm font-semibold">{VERIFY_LABEL[v.state]}</h4>
+    <h4 className="text-sm font-semibold">{v.verificationRequired === false ? "无需额外验证" : VERIFY_LABEL[v.state]}</h4>
     <p className="whitespace-pre-wrap text-sm text-muted-foreground">{v.summary}</p>
     <ol className="space-y-2">
       {v.steps.map(s => <li key={s.id} className="rounded-md border border-border p-2 text-sm">
@@ -68,13 +68,13 @@ export function VerificationToolDialog({ mode, mapping, config, onApply, onClose
     finally { setDeciding(false); }
   };
   const busy = !error && (!job || job.status === "running");
-  return <Modal open onClose={onClose} title={mode === "draft" ? "AI 生成验证草稿" : "试运行验证说明"}
-    description={mode === "draft" ? "分析所选分支的实际仓库文件。检查草稿后，点击应用才会替换当前验证说明。" : "按当前说明在独立工作目录执行，使用 Codex 中配置的权限。这里验证的是目标分支，不是任务尚未提交的改动。"}
+  return <Modal open onClose={onClose} title={mode === "draft" ? "AI 生成项目提示词" : "试运行项目验证"}
+    description={mode === "draft" ? "分析所选分支的实际仓库文件。结合已有约定生成环境、开发和测试提示词，点击应用后替换当前草稿。" : "根据项目提示词判断并试运行验证流程，使用 Codex 中配置的权限。这里验证的是目标分支，不是任务尚未提交的改动。"}
     size="lg" footer={<>
       <Button variant="ghost" onClick={onClose}>{busy ? "取消并关闭" : "关闭"}</Button>
       {mode === "draft" && job?.status === "done" && job.result?.prompt && <Button onClick={() => { onApply(job.result!.prompt!); onClose(); }}>应用草稿</Button>}
     </>}>
-    <div className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
+    <div className="min-w-0 max-h-[60vh] space-y-4 overflow-y-auto pr-1 [overflow-wrap:anywhere]">
       <p role="status" className="text-sm text-muted-foreground">{job?.message ?? "正在准备…"}</p>
       {(error || job?.status === "error") && <p role="alert" className="whitespace-pre-wrap text-sm text-danger">{error || job?.message}</p>}
       {job?.sources.length ? <ul className="text-xs text-muted-foreground">{job.sources.map(s => <li key={s.repo}>{s.repo} · {s.branch} · {s.commit.slice(0, 8)}</li>)}</ul> : null}

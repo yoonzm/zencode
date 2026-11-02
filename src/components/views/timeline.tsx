@@ -15,6 +15,7 @@ import { decideApproval, focusDiffFile, startRun } from "@/store/actions";
 import { SANDBOX_LABEL } from "@/data/types";
 import { useApp } from "@/store/state";
 import { parseVerificationMessage, isStreamingVerificationMessage } from "@/lib/verification-message";
+import { ImagePreviews } from "@/components/ui/image-paste";
 
 type Filter = "all" | "talk" | "cmd" | "edit";
 
@@ -210,6 +211,7 @@ const Event = memo(function Event({ e, task, last }: { e: RunEvent; task: ZTask;
             <p className="mb-0.5 text-xs font-medium text-accent">你 · 追加指令</p>
             {e.ref && <code className="mb-1 inline-block rounded-sm bg-card px-1.5 py-0.5 font-mono text-[11.5px] text-muted-foreground">{e.ref}</code>}
             <p className="selectable whitespace-pre-wrap text-sm leading-[1.6] text-foreground">{e.text}</p>
+            {e.images && <div className="mt-2"><ImagePreviews images={e.images} /></div>}
           </div>
         </Rail>
       );

@@ -1,11 +1,4 @@
-import type { VerifyConfig, VerifyState } from "./types";
-
-export const DEFAULT_VERIFY: VerifyConfig = {
-  enabled: true,
-  prompt: "",
-};
-
-export const verifyOf = (cfg?: Partial<VerifyConfig>): VerifyConfig => ({ enabled: cfg?.enabled ?? true, prompt: cfg?.prompt ?? DEFAULT_VERIFY.prompt });
+import type { VerifyState } from "./types";
 
 export const VERIFY_LABEL: Record<VerifyState, string> = {
   preparing: "准备环境",

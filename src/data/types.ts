@@ -49,7 +49,7 @@ export type EventBody =
   | { kind: "edit"; path: string; add: number; del: number; created?: boolean }
   | { kind: "test"; name: string; passed: number; failed: number; total: number; note?: string }
   | { kind: "approval"; cmd: string; reason: string; decision?: "once" | "always" | "deny" }
-  | { kind: "user"; text: string; ref?: string }
+  | { kind: "user"; text: string; ref?: string; images?: string[] }
   | { kind: "system"; text: string; tone?: "info" | "success" | "warn" }
   | { kind: "error"; text: string; detail?: string };
 
@@ -79,6 +79,7 @@ export interface DiffFile {
 
 export interface Run {
   state: RunState;
+  contextUsage?: { usedTokens: number; contextWindow: number | null };
   branch?: string;
   model: string;
   startedAt?: number;
@@ -101,6 +102,7 @@ export interface VerifyStep { id: string; title: string; expect: string; status:
 export interface VerifyLog { kind: "console" | "network" | "api" | "cli"; level: "info" | "error"; text: string }
 export interface Shot { id: string; path: string; label: string; failed?: boolean }
 export interface Verify {
+  verificationRequired?: boolean;
   state: VerifyState;
   mode: VerifyMode;
   where: "local" | "server";
@@ -191,6 +193,8 @@ export interface RepoMapping {
   id: string;
   product: string;
   repos: RepoLink[];
+  projectPrompt?: string;
+  /** Legacy configuration, migrated to projectPrompt when loaded. */
   verify?: VerifyConfig;
 }
 export interface VerifyConfig { enabled: boolean; prompt: string }

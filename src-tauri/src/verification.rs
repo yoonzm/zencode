@@ -20,10 +20,19 @@ pub fn browser_policy(root: &std::path::Path) -> crate::Result<String> {
 
 pub const BROWSER_POLICY: &str = "浏览器验证必须使用 Playwright 无头浏览器（headless: true），通过当前任务工作区中的脚本或测试运行器启动独立浏览器进程和全新隔离上下文。禁止使用 Computer Use、浏览器扩展或桌面自动化操作用户浏览器；禁止连接或接管用户现有 Chrome/Edge 等浏览器、标签页或调试端口（包括 connectOverCDP），禁止读取或复用用户浏览器配置目录、Cookie、登录态。登录只能使用用户为测试环境提供的凭据，在隔离上下文中完成。即使已有验证说明、计划或历史记录提及用户浏览器，也必须改用上述无头方式。缺少 Playwright 或浏览器二进制时先使用共享运行器自动安装；安装失败、缺少测试凭据或网络条件时，如实记录阻塞原因并标为 unverified，不得回退到用户浏览器或虚构通过。记录实际访问地址、断言和截图等证据；结束或失败时关闭本次创建的浏览器进程和上下文，不影响用户浏览器。生成验证草稿和测试计划时也必须明确此约束。";
 
-pub fn config<'a>(config: &'a Value, task: &Value) -> &'a Value {
+/// Empty projectPrompt intentionally overrides the legacy verification text.
+pub fn project_prompt(mapping: &Value) -> &str {
+    mapping["projectPrompt"].as_str().unwrap_or_else(|| text(&mapping["verify"], "prompt"))
+}
+
+pub fn instructions<'a>(config: &'a Value, task: &Value) -> &'a str {
     config["mappings"].as_array()
         .and_then(|ms| ms.iter().find(|m| m["product"] == task["product"]))
-        .map(|m| &m["verify"]).unwrap_or(&Value::Null)
+        .map(project_prompt).unwrap_or("")
+}
+
+pub fn project_context(instructions: &str) -> String {
+    format!("项目专有提示词（用户配置，适用于任务分析、开发、自检、验证和继续任务；按当前阶段选用相关约定，不要将开发操作带入只读或验证阶段。阶段限制、浏览器隔离和应用操作权限仍须遵守）：\n{instructions}")
 }
 
 pub fn empty(state: &str, summary: &str) -> Value {
@@ -33,11 +42,11 @@ pub fn empty(state: &str, summary: &str) -> Value {
 pub fn prompt(phase: &str, instructions: &str, plan: &Value) -> String {
     let screenshot_policy = "截图默认精简：只保留能证明关键断言、最终结果或失败现场的真实截图；相同页面和状态不重复截图，不为每次点击、输入、加载或中间步骤截图。通常保留 1–3 张关键截图即可；多个独立失败或用户明确要求时按需增加，不得为了数量限制遗漏关键失败证据。计划阶段也应按此原则安排截图。";
     let action = if phase == "planning" {
-        "只制定测试计划，不执行验证，不修改代码。所有步骤 status 为 pending。"
+        "只制定测试计划，不执行验证，不修改代码。结合项目专有提示词、任务要求、本次实际改动与已有自检结果，判断是否需要额外验证以及验证范围；提示词留空时依据仓库实际资料判断，不因未配置而跳过。只使用当前阶段相关的环境和测试约定。需要验证时生成最小充分的步骤，所有步骤 status 为 pending，verificationRequired 为 true。无需额外验证时 verificationRequired 为 false、state 为 unverified、steps 为空数组，summary 必须说明具体原因，不得声称验证通过。缺少环境、凭据、工具或无法判断不属于无需验证，应如实报告阻塞并保持 unverified。"
     } else {
         "执行已确认的测试计划，不修改业务代码。只能报告实际执行的结果。缺少环境、凭据或工具时必须标为 unverified；禁止虚构成功、证据或录屏。所有验证截图、日志、临时脚本统一存入任务工作区的 .verification/ 目录，不得加入 Git 暂存区或提交。UI 验证在关键步骤和失败处保存真实 PNG 截图。最终 JSON 增加 shots 数组，每项包含 path（工作区相对路径）、label（截图说明）、failed（是否未达预期）；只列出实际生成的截图，没有截图时返回空数组。"
     };
-    format!("{action}\n{BROWSER_POLICY}\n{screenshot_policy}\n产品验证说明：{instructions}\n已有计划：{plan}\n最终回复只输出 JSON：{{\"state\":\"unverified|passed|failed\",\"mode\":\"checks|api|ui\",\"where\":\"local|server\",\"target\":\"实际地址（未知则留空）\",\"summary\":\"结论及限制\",\"steps\":[{{\"id\":\"1\",\"title\":\"操作\",\"expect\":\"预期\",\"status\":\"pending|passed|failed\",\"note\":\"实际结果与证据（计划阶段留空）\"}}]}}。禁止推送、创建 MR。")
+    format!("{action}\n{BROWSER_POLICY}\n{screenshot_policy}\n{}\n已有计划：{plan}\n最终回复只输出 JSON（计划阶段增加 verificationRequired 布尔值）：{{\"state\":\"unverified|passed|failed\",\"mode\":\"checks|api|ui\",\"where\":\"local|server\",\"target\":\"实际地址（未知则留空）\",\"summary\":\"结论及限制\",\"steps\":[{{\"id\":\"1\",\"title\":\"操作\",\"expect\":\"预期\",\"status\":\"pending|passed|failed\",\"note\":\"实际结果与证据（计划阶段留空）\"}}]}}。禁止推送、创建 MR。", project_context(instructions))
 }
 
 pub fn report(response: &str, planning: bool, logs: Value) -> Value {
@@ -64,7 +73,9 @@ pub fn report(response: &str, planning: bool, logs: Value) -> Value {
         .map(|(i,s)| json!({"id":i.to_string(),"title":s["title"],"expect":s["expect"],
             "status":if planning {"pending"} else if ["passed","failed"].contains(&text(s,"status")) && !text(s,"note").trim().is_empty() {text(s,"status")} else {"pending"},
             "note":text(s,"note")})).collect();
-    let state = if planning && !steps.is_empty() { "awaiting-plan" }
+    let unnecessary = planning && v["verificationRequired"] == false && v["steps"].as_array().is_some_and(|s| s.is_empty()) && !text(&v,"summary").trim().is_empty();
+    if unnecessary { result["verificationRequired"] = json!(false); }
+    let state = if planning && !unnecessary && !steps.is_empty() { "awaiting-plan" }
         else if !planning && steps.iter().any(|s| text(s,"status")=="failed") { "failed" }
         else if !planning && text(&v,"state")=="passed" && !steps.is_empty() && steps.iter().all(|s| text(s,"status")=="passed") { "passed" }
         else { "unverified" };
@@ -84,6 +95,29 @@ pub fn mr_note(run: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn project_prompt_compatibility_and_product_scope() {
+        let config = json!({"mappings":[
+            {"product":"P","verify":{"enabled":false,"prompt":"legacy rules"}},
+            {"product":"Q","projectPrompt":"Q rules"},
+            {"product":"R","projectPrompt":"","verify":{"prompt":"stale"}}
+        ]});
+        assert_eq!(instructions(&config,&json!({"product":"P"})),"legacy rules");
+        assert_eq!(instructions(&config,&json!({"product":"Q"})),"Q rules");
+        assert_eq!(instructions(&config,&json!({"product":"R"})),"");
+        assert_eq!(instructions(&config,&json!({"product":"missing"})),"");
+    }
+
+    #[test]
+    fn no_verification_decision_never_reports_passed() {
+        let decision = report(r#"{"verificationRequired":false,"state":"passed","summary":"Only documentation changed","steps":[]}"#,true,json!([]));
+        assert_eq!(decision["state"],"unverified");
+        assert_eq!(decision["verificationRequired"],false);
+        let invalid = report(r#"{"verificationRequired":false,"state":"passed","steps":[]}"#,true,json!([]));
+        assert_eq!(invalid["state"],"unverified");
+        assert!(invalid["verificationRequired"].is_null());
+    }
+
     #[test]
     fn shared_runner_is_stable_across_sessions() {
         let root = tempfile::tempdir().unwrap();

@@ -25,13 +25,13 @@ export function Modal({ open, onClose, title, description, children, footer, siz
         showCloseButton={!hideClose}
         onCloseAutoFocus={onCloseAutoFocus}
         aria-describedby={description ? undefined : undefined}
-        className={cn("gap-0 rounded-xl border-border bg-popover p-0 shadow-pop", SIZE[size], className)}
+        className={cn("grid-cols-[minmax(0,1fr)] gap-0 rounded-xl border-border bg-popover p-0 shadow-pop", SIZE[size], className)}
       >
         <DialogHeader className={cn("px-5 pt-4 text-left", !title && !description && "sr-only")}>
           <DialogTitle className={cn("text-base leading-6", !title && "sr-only")}>{title ?? "对话框"}</DialogTitle>
           <DialogDescription className={cn("text-sm leading-5", !description && "sr-only")}>{description ?? " "}</DialogDescription>
         </DialogHeader>
-        {children && <div className="px-5 py-4">{children}</div>}
+        {children && <div className="min-w-0 px-5 py-4">{children}</div>}
         {footer && <DialogFooter className="flex-row items-center justify-end gap-2 border-t border-border px-5 py-3">{footer}</DialogFooter>}
       </DialogContent>
     </Dialog>

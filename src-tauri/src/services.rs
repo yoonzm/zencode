@@ -5,6 +5,8 @@ use std::{
     time::Duration,
 };
 use tokio::process::Command;
+#[path = "zentao_images.rs"]
+mod images;
 pub fn local_path(raw: &str) -> PathBuf {
     if let Some(rest) = raw.strip_prefix("~/") {
         return PathBuf::from(
