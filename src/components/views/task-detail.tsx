@@ -81,12 +81,12 @@ function Actions({ task }: { task: ZTask }) {
       {s === "review" && (
         <>
           <Button variant="primary" loading={run.mrBusy} onClick={() => createMr(task.id)}>
-            <GitPullRequest />{run.mr ? (run.mrBusy ? "正在确认 MR…" : "完成提交") : (run.mrBusy ? "正在创建 MR…" : "创建 Merge Request")}
+            <GitPullRequest />{run.mr ? (run.mrBusy ? "正在更新 MR…" : "更新原 MR") : (run.mrBusy ? "正在创建 MR…" : "创建 Merge Request")}
           </Button>
           {run.mr && <>
             <Button variant="secondary" onClick={() => openExternal(run.mr!.url)}><ExternalLink />打开 MR !{run.mr.iid}</Button>
             <Button variant="ghost" onClick={() => copyText(run.mr!.url, "已复制 MR 链接")}><Copy />复制 MR 链接</Button>
-            <span className="text-sm text-success" role="status">MR 已创建</span>
+            <span className="text-sm text-success" role="status">沿用原 MR</span>
           </>}
         </>
       )}

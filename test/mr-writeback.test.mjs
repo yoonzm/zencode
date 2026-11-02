@@ -30,7 +30,7 @@ test('a legacy created MR remains accessible without offering ZenTao writeback',
   const module={exports:{}};
   new Function('require','module','exports',result.outputFiles[0].text)(createRequire(import.meta.url),module,module.exports);
   const pending=module.exports.render(true);
-  for(const label of ['打开 MR !260','复制 MR 链接','完成提交','MR 已创建']) assert.ok(pending.includes(label),label);
+  for(const label of ['打开 MR !260','复制 MR 链接','更新原 MR','沿用原 MR']) assert.ok(pending.includes(label),label);
   assert.ok(!pending.includes('回写禅道'));
   assert.ok(!pending.includes('服务返回空响应'));
   assert.ok(!pending.includes('创建 Merge Request'));

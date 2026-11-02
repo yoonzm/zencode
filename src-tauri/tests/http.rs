@@ -251,7 +251,10 @@ async fn submission_preserves_existing_mr_without_zentao_requests() {
     let project_base = Arc::new(Mutex::new(String::new()));
     let response_base = project_base.clone();
     let link = "https://gitlab.example/team/app/-/merge_requests/4";
+    let mr_head = Arc::new(Mutex::new(String::new()));
+    let response_head = mr_head.clone();
     let base=server(Arc::new(move|route,_request|{
+        if route.ends_with("/merge_requests/4") { return (200,json!({"iid":4,"state":"opened","source_branch":"main","sha":response_head.lock().unwrap().clone(),"web_url":link})); }
         if route.starts_with("/api/v4/projects/"){return (200,json!({"id":9,"path_with_namespace":"team/app","http_url_to_repo":format!("{}/team/app.git",response_base.lock().unwrap())}));}
         if route=="/api.php/v1/comments"{let n=count.fetch_add(1,Ordering::SeqCst);return if n==0{(500,json!({"error":"temporary"}))}else{(200,json!({"id":5}))};}
         if route=="/api.php/v1/bugs/1"{return (200,json!({"id":1,"actions":if count.load(Ordering::SeqCst)>1{json!([{"comment":format!("ZenCode MR: {link}")}])}else{json!([])}}));}
@@ -272,7 +275,12 @@ async fn submission_preserves_existing_mr_without_zentao_requests() {
     )
     .await
     .unwrap();
+    for args in [vec!["config","user.email","test@example.invalid"],vec!["config","user.name","Test"],vec!["commit","--allow-empty","-m","initial"]] { command("git",&args,Some(&repo)).await.unwrap(); }
+    let commit_base = command("git",&["rev-parse","HEAD"],Some(&repo)).await.unwrap();
+    *mr_head.lock().unwrap() = commit_base.clone();
     let mut run = empty_run();
+    run["base"] = json!(commit_base);
+    run["branch"] = json!("main");
     run["state"] = json!("review");
     run["worktree"] = json!(repo);
     run["mr"] = json!({"iid":4,"url":link});
@@ -341,7 +349,10 @@ async fn legacy_pending_mr_finishes_without_zentao_access() {
         let base_value = Arc::new(Mutex::new(String::new()));
         let response_base = base_value.clone();
         let link = "https://gitlab.example/team/app/-/merge_requests/4";
+    let mr_head = Arc::new(Mutex::new(String::new()));
+    let response_head = mr_head.clone();
         let base = raw_server(Arc::new(move |route, request| {
+            if route.ends_with("/merge_requests/4") { return (200,json!({"iid":4,"state":"opened","source_branch":"main","sha":response_head.lock().unwrap().clone(),"web_url":link}).to_string()); }
             if route.starts_with("/api/v4/projects/") {
                 assert!(request.starts_with("GET "), "Must not create another MR");
                 return (200, json!({"id":9,"http_url_to_repo":format!("{}/team/app.git",response_base.lock().unwrap())}).to_string());
@@ -356,7 +367,12 @@ async fn legacy_pending_mr_finishes_without_zentao_access() {
         std::fs::create_dir(&repo).unwrap();
         command("git", &["init", "-b", "main"], Some(&repo)).await.unwrap();
         command("git", &["remote", "add", "origin", &format!("{base}/team/app.git")], Some(&repo)).await.unwrap();
-        let mut run = empty_run();
+        for args in [vec!["config","user.email","test@example.invalid"],vec!["config","user.name","Test"],vec!["commit","--allow-empty","-m","initial"]] { command("git",&args,Some(&repo)).await.unwrap(); }
+    let commit_base = command("git",&["rev-parse","HEAD"],Some(&repo)).await.unwrap();
+    *mr_head.lock().unwrap() = commit_base.clone();
+    let mut run = empty_run();
+    run["base"] = json!(commit_base);
+    run["branch"] = json!("main");
         run["state"] = json!("review");
         run["worktree"] = json!(repo);
         run["mr"] = json!({"iid":4,"url":link});

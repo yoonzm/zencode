@@ -88,6 +88,10 @@ The desktop workflow embeds the public key, creates signed NSIS/macOS updater bu
 
 The first updater-capable version must be installed manually. Validate an actual old-to-new upgrade on Windows x64 and both macOS architectures before distributing broadly; automated tests do not replace this installer roundtrip. No signing credentials, remote configuration or release publication are performed by a local code change.
 
+## Continuing submitted merge requests
+
+Tasks with an open MR can receive more text or images and resume the original Codex thread in the original workspace and source branch. Review and **Update original MR** commit and push further changes to that same branch, retaining the MR IID and URL without creating another MR. Push failures preserve the committed work for retry, including after restarting the app; no-change submissions are idempotent. Saved task mappings keep existing MRs attached to their original repository even when configuration mappings change. MR state and source branch are checked before continuation and submission. Merged/closed MRs, mismatched workspace branches and cleaned workspaces return explicit errors. New verification evidence remains local and out of Git commits.
+
 ## Manual requirements
 
 The task composer uses a compact rounded input with attachment, access, context-window and model controls. Image paste guidance is no longer shown permanently; read/send status and actual errors remain visible. Context usage comes from Codex `thread/tokenUsage/updated`: the latest `last.totalTokens` is compared with `modelContextWindow`, never cumulative `total` spending. The display follows each task, accepts decreases after context compaction, persists with task state, and resets for a new thread. Missing capacity or missing usage is shown as unknown rather than guessed. Hovering or focusing the ring shows percentage used/remaining and token counts. The event is documented in the [official App Server protocol](https://learn.chatgpt.com/docs/app-server#turn-events).

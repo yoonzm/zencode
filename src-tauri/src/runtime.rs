@@ -758,10 +758,16 @@ impl Runtime {
             }).await?;
             return Ok(());
         }
-        if !t["run"]["mr"].is_null() {
-            return Err("已提交 MR 的任务不能重复执行".into());
+        let continuing_mr = !t["run"]["mr"].is_null();
+        if continuing_mr {
+            let run = &t["run"];
+            if run["cleaned"] == true || text(run,"worktree").is_empty() || !PathBuf::from(text(run,"worktree")).is_dir() {
+                return Err("此任务工作区已清理，无法继续修改原 MR；请打开原 MR 或新建任务。".into());
+            }
+            open_task_mr(&config, run).await?;
+            validate_task_branch(run).await?;
         }
-        let mapping = config["mappings"]
+        let mapping = if continuing_mr { Some(t["run"]["mapping"].clone()) } else { config["mappings"]
             .as_array()
             .and_then(|ms| ms.iter().find(|m| m["product"] == t["product"]))
             .and_then(|m| {
@@ -769,7 +775,8 @@ impl Runtime {
                     repos.iter().find(|r| r["repo"] == t["repoId"])
                 } else { Some(m) }
             })
-            .cloned()
+            .cloned() }
+            .filter(|m| !continuing_mr || (!text(m,"repo").is_empty() && !text(m,"branch").is_empty()))
             .ok_or("请先配置此产品的仓库映射")?;
         let job = Arc::new(Job::new());
         let input = crate::input_images::combine(&t["run"]["pendingInstructions"], &instruction, images);
@@ -1177,41 +1184,25 @@ impl Runtime {
         for remote in remotes.lines() {
             validate_remote(remote, &project)?;
         }
-        if run["mr"].is_null() {
-            let reviewed = text(run, "rawDiff").to_owned();
-            let diff = self.diff(id).await?;
-            if !reviewed.is_empty() && reviewed != diff {
-                return Err("工作区在审核后发生变化，Diff 已刷新，请重新审核后提交。".into());
-            }
-            if diff.is_empty() {
-                return Err("没有可提交的代码变更".into());
-            }
-            stage_business_changes(&cwd, text(run, "base")).await?;
-            if !command("git", &["diff", "--cached", "--name-only"], Some(&cwd))
-                .await?
-                .is_empty()
-            {
-                command(
-                    "git",
-                    &[
-                        "commit",
-                        "-m",
-                        &format!("{}: {}", crate::manual::reference(&t), text(&t, "title")),
-                    ],
-                    Some(&cwd),
-                )
-                .await?;
-            }
-            command(
-                "git",
-                &[
-                    "push",
-                    "origin",
-                    &format!("HEAD:refs/heads/{}", text(run, "branch")),
-                ],
-                Some(&cwd),
-            )
-            .await?;
+        let existing_mr = if run["mr"].is_null() { None } else { Some(open_task_mr(config,run).await?) };
+        validate_task_branch(run).await?;
+        let reviewed = text(run, "rawDiff").to_owned();
+        let diff = self.diff(id).await?;
+        if !reviewed.is_empty() && reviewed != diff {
+            return Err("工作区在审核后发生变化，Diff 已刷新，请重新审核后提交。".into());
+        }
+        if diff.is_empty() && existing_mr.is_none() {
+            return Err("没有可提交的代码变更".into());
+        }
+        stage_business_changes(&cwd, text(run, "base")).await?;
+        if !command("git", &["diff", "--cached", "--name-only"], Some(&cwd)).await?.is_empty() {
+            command("git", &["commit", "-m", &format!("{}: {}", crate::manual::reference(&t), text(&t, "title"))], Some(&cwd)).await?;
+        }
+        let head = command("git", &["rev-parse", "HEAD"], Some(&cwd)).await?;
+        if existing_mr.as_ref().is_none_or(|mr| text(mr,"sha") != head) {
+            command("git", &["push", "origin", &format!("HEAD:refs/heads/{}", text(run, "branch"))], Some(&cwd)).await?;
+        }
+        if existing_mr.is_none() {
             let route = format!("/projects/{}/merge_requests", project["id"]);
             let branch = url::form_urlencoded::byte_serialize(text(run, "branch").as_bytes())
                 .collect::<String>();
@@ -1239,7 +1230,7 @@ impl Runtime {
             t["run"]["state"] = json!("done");
             t["run"]["finishedAt"] = json!(now());
             t["run"].as_object_mut().unwrap().remove("writebackError");
-            push_event(t, json!({"kind":"system","tone":"success","text":"已提交 MR"}));
+            push_event(t, json!({"kind":"system","tone":"success","text":if existing_mr.is_some() {"已更新原 MR"} else {"已提交 MR"}}));
         }).await
     }
     pub async fn prepare_update(&self, version: &str) -> Result<()> {
@@ -1306,6 +1297,33 @@ impl Runtime {
         }
     }
 }
+async fn open_task_mr(config: &Value, run: &Value) -> Result<Value> {
+    let iid = run["mr"]["iid"].as_u64().ok_or("缺少原 MR 编号")?;
+    let repo = text(&run["mapping"], "repo");
+    let branch = text(run,"branch");
+    if repo.is_empty() || branch.is_empty() || text(run,"base").is_empty() { return Err("原 MR 缺少仓库、源分支或基线信息，无法继续修改。".into()); }
+    let encoded = url::form_urlencoded::byte_serialize(repo.as_bytes()).collect::<String>();
+    let mr = services::gitlab(&config["gitlab"])?
+        .request(&format!("/projects/{encoded}/merge_requests/{iid}"), "GET", None).await?;
+    match text(&mr,"state") {
+        "opened" => {},
+        "merged" => return Err("原 MR 已合并，请新建任务处理后续修改。".into()),
+        "closed" => return Err("原 MR 已关闭，请先在 GitLab 重新打开或新建任务。".into()),
+        _ => return Err("原 MR 当前不可修改，请在 GitLab 检查其状态。".into()),
+    }
+    if text(&mr,"source_branch") != branch { return Err("原 MR 的源分支与任务记录不一致，已停止操作。".into()); }
+    Ok(mr)
+}
+
+async fn validate_task_branch(run: &Value) -> Result<()> {
+    let cwd = PathBuf::from(text(run,"worktree"));
+    let branch = text(run,"branch");
+    if branch.is_empty() || command("git", &["symbolic-ref","--short","HEAD"], Some(&cwd)).await? != branch {
+        return Err("当前工作区分支与任务源分支不一致，请切回任务分支后重试。".into());
+    }
+    Ok(())
+}
+
 fn mr_payload(task: &Value, config: &Value) -> Value {
     let run = &task["run"];
     let draft = config["gitlab"]["mrDraft"] == true && text(&config["gitlab"], "mrMode") != "auto-merge";
