@@ -45,6 +45,7 @@ test('project prompt dialog preserves edits, removes the switch and fits large a
     const dialog=page.getByRole('dialog',{name:'项目专有提示词 · P'});
     const area=page.getByRole('textbox',{name:'环境、开发与测试约定'});
     assert.equal(await area.inputValue(),'Existing project rules');
+    await dialog.evaluate(el=>Promise.all(el.getAnimations().map(animation=>animation.finished.catch(()=>{}))));
     const bounds=await dialog.boundingBox(), inputBounds=await area.boundingBox();
     assert.ok(bounds.width>=1000,`Dialog width: ${bounds.width}`);
     assert.ok(inputBounds.height>=500,`Input height: ${inputBounds.height}`);

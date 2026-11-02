@@ -1,5 +1,5 @@
 import { taskNo } from "@/lib/task";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/primitives/popover";
 import { cn } from "@/lib/utils";
 import { Plus, ChevronDown, ChevronRight, Inbox, ListFilter, RefreshCw, Search, SearchX, WifiOff, X, Layers, ArrowUpDown, Rows, LayoutList } from "@/lib/icons";
@@ -162,12 +162,12 @@ export function TaskListPane({ className }: { className?: string }) {
   const route = useRoute();
   const now = useNow(20_000);
   const selectedId = route.name === "task" ? route.id : null;
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const collapsed = useApp((s) => s.collapsedGroups);
   const scroller = useRef<HTMLDivElement>(null);
 
   const filtered = useMemo(() => sortTasks(filterTasks(tasks, filters), sort), [tasks, filters, sort]);
   const groups = useMemo(() => groupTasks(filtered, group), [filtered, group]);
-  const flat = useMemo(() => groups.filter((g) => !collapsed[g.key]).flatMap((g) => g.items), [groups, collapsed]);
+  const flat = useMemo(() => groups.filter((g) => group !== "state" || !collapsed[g.key]).flatMap((g) => g.items), [groups, collapsed, group]);
   const kindCounts = useMemo(() => {
     const base = filterTasks(tasks, { ...filters, kind: "all" });
     return { all: base.length, bug: base.filter((t) => t.kind === "bug").length, story: base.filter((t) => t.kind === "story").length };
@@ -267,10 +267,10 @@ export function TaskListPane({ className }: { className?: string }) {
     body = (
       <div role="listbox" aria-label="任务列表">
         {groups.map((g) => {
-          const open = !collapsed[g.key];
+          const open = group !== "state" || !collapsed[g.key];
           return (
             <section key={g.key} aria-label={g.state ? STATE_LABEL[g.state] : "全部"}>
-              {group === "state" && <GroupHeader state={g.state} count={g.items.length} open={open} onToggle={() => setCollapsed((c) => ({ ...c, [g.key]: open }))} />}
+              {group === "state" && <GroupHeader state={g.state} count={g.items.length} open={open} onToggle={() => store.set((s) => ({ collapsedGroups: { ...s.collapsedGroups, [g.key]: open } }))} />}
               {open && g.items.map((t) => <TaskRow key={t.id} t={t} selected={t.id === selectedId} compact={density === "compact"} now={now} />)}
             </section>
           );

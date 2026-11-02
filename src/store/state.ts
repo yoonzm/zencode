@@ -1,6 +1,7 @@
 import { migrateProjectPrompt } from "@/data/project-prompt";
 import { createStore, useStore } from "@/lib/store";
 import type { AppConfig, Priority, RunState, ZTask } from "@/data/types";
+import { STATE_LABEL } from "@/data/types";
 import { DEFAULT_CONFIG } from "@/data/defaults";
 import { desktopCall } from "@/lib/desktop";
 import { loadJSON, saveJSON } from "@/lib/utils";
@@ -90,6 +91,8 @@ export interface Prefs {
   listWidth: number;
   group: "state" | "none";
   sort: "updated" | "priority" | "deadline";
+  filters: Filters;
+  collapsedGroups: Record<string, boolean>;
   setupDone: boolean;
   notify: Notify;
   feishu: Feishu;
@@ -105,7 +108,6 @@ export interface AppState extends Prefs {
   appVersion: string;
   update: UpdateState;
   tasks: ZTask[];
-  filters: Filters;
   listStatus: ListStatus;
   syncError?: string;
   syncing: boolean;
@@ -141,6 +143,8 @@ const defaultPrefs: Prefs = {
   listWidth: 448,
   group: "state",
   sort: "updated",
+  filters: EMPTY_FILTERS,
+  collapsedGroups: { completed: true },
   setupDone: false,
   notify: { done: true, approval: true, failed: true, sound: false },
   feishu: { enabled: false, webhook: "", secret: "", attention: true, result: true },
@@ -166,7 +170,6 @@ export const store = createStore<AppState>({
   notify: { ...defaultPrefs.notify, ...(saved.notify ?? {}) },
   config: { ...defaultPrefs.config, ...(saved.config ?? {}) },
   tasks: [],
-  filters: EMPTY_FILTERS,
   listStatus: "loading",
   syncing: false,
   lastSync: 0,
@@ -187,13 +190,25 @@ export function useApp<S>(selector: (s: AppState) => S): S {
 }
 
 // ── 持久化 ────────────────────────────────────────────────
-const PERSIST_KEYS: (keyof Prefs)[] = ["theme", "density", "sidebarOpen", "listWidth", "group", "sort", "setupDone", "notify", "feishu", "reports", "cleanupDays", "autoUpdate", "channel", "config"];
+const PERSIST_KEYS: (keyof Prefs)[] = ["theme", "density", "sidebarOpen", "listWidth", "group", "sort", "filters", "collapsedGroups", "setupDone", "notify", "feishu", "reports", "cleanupDays", "autoUpdate", "channel", "config"];
 let lastPersisted = "";
 let hydrated = false;
 export async function hydrate() {
   const data = await desktopCall("load");
   // Only supported preferences are restored; obsolete prototype platform overrides are ignored.
   const prefs = Object.fromEntries(PERSIST_KEYS.filter(k => k in (data.prefs ?? {})).map(k => [k, data.prefs[k]]));
+  const filters = prefs.filters ?? {};
+  prefs.filters = {
+    kind: ["all", "bug", "story"].includes(filters.kind) ? filters.kind : "all",
+    states: Array.isArray(filters.states) ? filters.states.filter((s: unknown) => typeof s === "string" && Object.hasOwn(STATE_LABEL, s)) : [],
+    priorities: Array.isArray(filters.priorities) ? filters.priorities.filter((p: unknown) => typeof p === "number" && [1, 2, 3, 4].includes(p)) : [],
+    assignee: filters.assignee === "me" ? "me" : "all",
+    products: Array.isArray(filters.products) ? filters.products.filter((p: unknown) => typeof p === "string") : [],
+    query: typeof filters.query === "string" ? filters.query : "",
+  };
+  prefs.collapsedGroups = { ...defaultPrefs.collapsedGroups, ...Object.fromEntries(
+    Object.entries(prefs.collapsedGroups ?? {}).filter(([state, collapsed]) => Object.hasOwn(STATE_LABEL, state) && typeof collapsed === "boolean"),
+  ) };
   if (prefs.config?.gitlab) {
     const g = prefs.config.gitlab;
     prefs.config = { ...prefs.config, gitlab: { ...g, mrMode: ["manual", "auto-create", "auto-merge"].includes(g.mrMode) ? g.mrMode : "manual", mrDraft: g.mrMode ? !!g.mrDraft : false } };
