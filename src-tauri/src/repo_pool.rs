@@ -10,6 +10,26 @@ pub(super) struct PoolState {
     pub(super) fetches: usize,
 }
 
+// A staged deletion no longer has its original leaf directory. Resolve the
+// existing ancestors so aliases such as macOS /var -> /private/var still match.
+fn canonical_location(path: &Path) -> Result<PathBuf> {
+    let mut ancestor = path;
+    let mut missing = Vec::new();
+    loop {
+        match ancestor.canonicalize() {
+            Ok(mut resolved) => {
+                for name in missing.into_iter().rev() { resolved.push(name); }
+                return Ok(resolved);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                missing.push(ancestor.file_name().ok_or("无效 worktree 路径")?.to_owned());
+                ancestor = ancestor.parent().ok_or("无效 worktree 路径")?;
+            }
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+}
+
 impl Runtime {
     async fn repository_lock(&self, pool: &Path) -> Arc<Mutex<PoolState>> {
         let key = pool.canonicalize().unwrap_or_else(|_|pool.to_path_buf());
@@ -133,6 +153,13 @@ impl Runtime {
         if !original.is_absolute() || original.parent() != Some(self.root.join("worktrees").as_path()) {
             return Err("拒绝注销应用工作目录以外的 worktree".into());
         }
+        let root = self.root.canonicalize().map_err(|e|e.to_string())?;
+        let original_location = canonical_location(original)?;
+        let actual_location = canonical_location(actual)?;
+        if original_location.parent() != Some(root.join("worktrees").as_path())
+            || (actual_location != original_location && actual_location.parent() != Some(root.join("pending-delete").as_path())) {
+            return Err("拒绝注销应用工作目录或待清理目录以外的 worktree".into());
+        }
         for entry in std::fs::read_dir(&directory).map_err(|e|e.to_string())? {
             let entry = entry.map_err(|e|e.to_string())?;
             let pool = entry.path();
@@ -143,9 +170,10 @@ impl Runtime {
             for field in listing.split('\0') {
                 let Some(path) = field.strip_prefix("worktree ") else { continue; };
                 let path = PathBuf::from(path);
-                let relative = match path.strip_prefix(original).or_else(|_|path.strip_prefix(actual)) { Ok(relative) => relative, Err(_) => continue };
+                let location = canonical_location(&path)?;
+                let relative = match location.strip_prefix(&original_location).or_else(|_|location.strip_prefix(&actual_location)) { Ok(relative) => relative, Err(_) => continue };
                 let destination = actual.join(relative);
-                let removal = if destination.join(".git").is_file() && original != actual {
+                let removal = if destination.join(".git").is_file() && original_location != actual_location {
                     services::repository_command(&["worktree","repair",&destination.to_string_lossy()],Some(&pool),None).await?;
                     destination
                 } else { path };

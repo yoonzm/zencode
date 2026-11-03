@@ -216,12 +216,22 @@ mod tests {
         let remote = source.path().to_string_lossy().to_string();
         let (base,server) = server(Arc::new(move |_|json!({"ssh_url_to_repo":remote}))).await;
         let root = tempfile::tempdir().unwrap();
-        Storage::new(root.path()).save(&json!({"tasks":[
+        #[cfg(unix)]
+        let alias = tempfile::tempdir().unwrap();
+        #[cfg(unix)]
+        let data_root = {
+            let path = alias.path().join("data");
+            std::os::unix::fs::symlink(root.path(), &path).unwrap();
+            path
+        };
+        #[cfg(windows)]
+        let data_root = root.path().to_path_buf();
+        Storage::new(&data_root).save(&json!({"tasks":[
             {"id":"a","kind":"story","no":1,"run":services::empty_run()},
             {"id":"b","kind":"story","no":2,"run":services::empty_run()},
             {"id":"c","kind":"story","no":3,"run":services::empty_run()}
         ]})).unwrap();
-        let runtime = Runtime::new(root.path().into(),Arc::new(|_,_|{})).unwrap();
+        let runtime = Runtime::new(data_root.clone(),Arc::new(|_,_|{})).unwrap();
         let mapping = json!({"product":"P","repos":[{"repo":"team/front","branch":"main"}]});
         let config = json!({"gitlab":{"baseUrl":base,"token":"fixture"}});
         let a_job = Arc::new(Job::new()); let b_job = Arc::new(Job::new());
@@ -229,9 +239,11 @@ mod tests {
         a.unwrap(); b.unwrap();
         let pool_lock = runtime.repository_locks.lock().await.values().next().unwrap().clone();
         assert_eq!(pool_lock.lock().await.fetches, 1, "overlapping requests share a fetch");
-        assert_eq!(std::fs::read_dir(root.path().join("repository-pool")).unwrap().count(),1);
+        assert_eq!(std::fs::read_dir(data_root.join("repository-pool")).unwrap().count(),1);
         let a = runtime.task("a").await.unwrap(); let b = runtime.task("b").await.unwrap();
         let a_path = PathBuf::from(text(&a["run"],"worktree")); let b_path = PathBuf::from(text(&b["run"],"worktree"));
+        let a_registered = command("git",&["rev-parse","--show-toplevel"],Some(&a_path)).await.unwrap();
+        let b_registered = command("git",&["rev-parse","--show-toplevel"],Some(&b_path)).await.unwrap();
         assert!(a_path.join(".git").is_file()); assert!(b_path.join(".git").is_file());
         let common = command("git",&["rev-parse","--git-common-dir"],Some(&a_path)).await.unwrap();
         assert_eq!(common,command("git",&["rev-parse","--git-common-dir"],Some(&b_path)).await.unwrap());
@@ -240,6 +252,7 @@ mod tests {
         runtime.prepare_workspace("b",&config,&mapping,&b_job).await.unwrap();
         assert_eq!(std::fs::metadata(&config_file).unwrap().modified().unwrap(), config_modified, "resume does not rewrite shared Git configuration");
         assert!(runtime.remove_repository_worktrees(std::path::Path::new(""),&a_path).await.is_err());
+        assert!(runtime.remove_repository_worktrees(&a_path,source.path()).await.is_err());
         assert!(a_path.join(".git").is_file()); assert!(b_path.join(".git").is_file());
         std::fs::write(a_path.join("same.txt"),"task A\n").unwrap();
         assert_eq!(std::fs::read_to_string(b_path.join("same.txt")).unwrap().replace("\r\n","\n"),"base\n");
@@ -268,8 +281,8 @@ mod tests {
             }
         }).await.unwrap();
         let listing = command("git",&["worktree","list","--porcelain"],Some(&c_path)).await.unwrap();
-        assert!(!listing.contains(&a_path.to_string_lossy().replace('\\',"/")));
-        assert!(!listing.contains(&b_path.to_string_lossy().replace('\\',"/")));
+        assert!(!listing.contains(&a_registered));
+        assert!(!listing.contains(&b_registered));
         command("git",&["fsck","--no-reflogs"],Some(&c_path)).await.unwrap();
         server.abort();
     }
