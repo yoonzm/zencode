@@ -6,8 +6,9 @@ impl Runtime {
         let mapping = if task["run"]["productMapping"].is_object() { task["run"]["productMapping"].clone() } else { mapping.clone() };
         let links = crate::workspace::links(&mapping)?;
         if text(&task["run"], "worktree").is_empty() {
-            let suffix = format!("{}-{}-{}", text(&task,"kind"), task["no"].as_u64().unwrap_or(0), &Uuid::new_v4().to_string()[..8]);
-            let root = self.root.join("worktrees").join(&suffix);
+            let key = Uuid::new_v4().simple().to_string()[..12].to_owned();
+            let suffix = format!("{}-{}-{key}", text(&task,"kind"), task["no"].as_u64().unwrap_or(0));
+            let root = self.root.join("worktrees").join(format!("t-{key}"));
             std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
             self.update(id, |t| {
                 t["run"]["worktree"] = json!(root);
@@ -22,7 +23,13 @@ impl Runtime {
         let mut repositories = crate::workspace::repositories(&task["run"]);
         for (index, link) in links.iter().enumerate() {
             if job.stopped.load(Ordering::SeqCst) || job.paused.load(Ordering::SeqCst) { return Err("执行已取消，工作区保留".into()); }
-            if repositories.iter().any(|r| r["mapping"]["repo"] == link["repo"]) { continue; }
+            if let Some(repo) = repositories.iter().find(|r| r["mapping"]["repo"] == link["repo"]) {
+                #[cfg(windows)]
+                services::repository_command(&["config","--local","core.longpaths","true"],Some(&PathBuf::from(text(repo,"worktree"))),Some((&job.stopped,&job.paused))).await?;
+                #[cfg(not(windows))]
+                let _ = repo;
+                continue;
+            }
             self.event(id,json!({"kind":"system","text":format!("正在准备产品仓库 {}/{}：{}",index+1,links.len(),text(link,"repo"))})).await?;
             command("git", &["check-ref-format", "--branch", text(link, "branch")], None).await?;
             let api = services::gitlab(&config["gitlab"])?;
@@ -32,8 +39,17 @@ impl Runtime {
             let remote = if remote.is_empty() { text(&project, "http_url_to_repo") } else { remote };
             if remote.is_empty() || remote.starts_with('-') { return Err("GitLab 项目没有有效的克隆地址".into()); }
             let path = if links.len() == 1 && repositories.is_empty() { String::new() } else {
-                format!(".zencode-repos/{}", crate::workspace::directory(text(link,"repo")))
+                format!(".zencode-repos/{}", crate::workspace::worktree_directory(text(link,"repo")))
             };
+            // Resume the recorded path even if a previous version used a longer directory name.
+            let pending = &task["run"]["preparingRepository"];
+            let pending_path = PathBuf::from(text(pending,"worktree"));
+            let old_path = root.join(format!(".zencode-repos/{}",crate::workspace::directory(text(link,"repo"))));
+            let path = if pending["remote"] == remote && pending["branch"] == text(&task["run"],"branch") && (pending_path == root.join(&path) || pending_path == old_path) {
+                let relative = pending_path.strip_prefix(&root).map_err(|_|"初始化目录不在任务工作区内")?;
+                if relative.components().any(|c|matches!(c,std::path::Component::ParentDir)) { return Err("初始化目录无效".into()); }
+                relative.to_string_lossy().replace('\\',"/")
+            } else { path };
             let cwd = root.join(&path);
             std::fs::create_dir_all(cwd.parent().unwrap()).map_err(|e| e.to_string())?;
             let branch = text(&task["run"],"branch");
@@ -42,6 +58,8 @@ impl Runtime {
             } else { None };
             // Resume a worktree interrupted before its metadata was saved, without overwriting changes.
             if !cwd.join(".git").is_file() { return Err("任务仓库必须使用仓库池 worktree".into()); }
+            #[cfg(windows)]
+            services::repository_command(&["config","--local","core.longpaths","true"],Some(&cwd),Some((&job.stopped,&job.paused))).await?;
             let actual = command("git", &["remote","get-url","origin"],Some(&cwd)).await?;
             if actual != remote { return Err("未完成初始化的仓库 origin 与配置不一致".into()); }
             let current = command("git", &["symbolic-ref","--short","HEAD"],Some(&cwd)).await?;
@@ -55,6 +73,7 @@ impl Runtime {
                 text(pending,"base").to_owned()
             };
             if command("git", &["rev-parse","HEAD"],Some(&cwd)).await? != base { return Err("未完成初始化的仓库已有额外提交，请先检查工作目录".into()); }
+            self.complete_repository_checkout(id,&cwd,&base,job).await?;
             repositories.push(json!({"mapping":link,"path":path,"worktree":cwd,"branch":branch,"base":base}));
             self.update(id, |t| {
                 t["run"]["repositories"] = json!(repositories);
@@ -246,6 +265,9 @@ mod tests {
     #[tokio::test]
     async fn interrupted_initialization_resumes_original_sha_and_preserves_edits() {
         let source = tempfile::tempdir().unwrap(); repository(source.path(),"main").await;
+        std::fs::write(source.path().join("missing.txt"),"restore this file\n").unwrap();
+        command("git",&["add","missing.txt"],Some(source.path())).await.unwrap();
+        command("git",&["commit","-m","recovery fixture"],Some(source.path())).await.unwrap();
         let remote = source.path().to_string_lossy().to_string(); let origin = remote.clone();
         let (base,server) = server(Arc::new(move |_|json!({"ssh_url_to_repo":remote}))).await;
         let root = tempfile::tempdir().unwrap();
@@ -262,9 +284,58 @@ mod tests {
             t["run"]["preparingRepository"]=json!({"worktree":cwd,"remote":origin,"branch":task["run"]["branch"],"base":original});
         }).await.unwrap();
         std::fs::write(cwd.join("same.txt"),"preserved edit\n").unwrap();
+        std::fs::remove_file(cwd.join("missing.txt")).unwrap();
+        let index = command("git",&["rev-parse","--git-path","index"],Some(&cwd)).await.unwrap();
+        std::fs::remove_file(cwd.join(index)).unwrap();
         runtime.prepare_workspace("a",&config,&mapping,&job).await.unwrap();
         assert_eq!(runtime.task("a").await.unwrap()["run"]["base"],original);
         assert_eq!(std::fs::read_to_string(cwd.join("same.txt")).unwrap(),"preserved edit\n");
+        assert_eq!(std::fs::read_to_string(cwd.join("missing.txt")).unwrap().replace("\r\n","\n"),"restore this file\n");
+        server.abort();
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn windows_long_paths_retry_failed_checkout_using_pool_config() {
+        let source = tempfile::tempdir().unwrap(); repository(source.path(),"main").await;
+        command("git",&["config","core.longpaths","true"],Some(source.path())).await.unwrap();
+        let relative = format!("{}/{}/tracked-file.txt","a".repeat(65),"b".repeat(65));
+        let file = source.path().join(&relative);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(&file,"long path fixture\n").unwrap();
+        command("git",&["add","."],Some(source.path())).await.unwrap();
+        command("git",&["commit","-m","long file"],Some(source.path())).await.unwrap();
+        let base = command("git",&["rev-parse","HEAD"],Some(source.path())).await.unwrap();
+        let remote = source.path().to_string_lossy().to_string(); let origin = remote.clone();
+        let (api,server) = server(Arc::new(move |_|json!({"ssh_url_to_repo":remote}))).await;
+        let root = tempfile::tempdir().unwrap();
+        let data = root.path().join("long-application-data-directory".repeat(2));
+        let workspace = data.join("worktrees/story-12308-failed-checkout");
+        let cwd = workspace.join(format!(".zencode-repos/{}",crate::workspace::directory("team/front")));
+        std::fs::create_dir_all(cwd.parent().unwrap()).unwrap();
+        assert!(cwd.join(&relative).as_os_str().len() > 260);
+        let pool = data.join("repository-pool").join(crate::workspace::directory(&format!("{origin}#team/front")));
+        std::fs::create_dir_all(&pool).unwrap();
+        command("git",&["init","--bare"],Some(&pool)).await.unwrap();
+        command("git",&["remote","add","origin",&origin],Some(&pool)).await.unwrap();
+        command("git",&["fetch","origin","+refs/heads/main:refs/remotes/origin/main"],Some(&pool)).await.unwrap();
+        let branch = "zencode/story-12308-fixture";
+        let error = command("git",&["-c","core.longpaths=false","worktree","add","--no-track","-b",branch,&cwd.to_string_lossy(),&base],Some(&pool)).await.unwrap_err();
+        assert!(error.contains("Filename too long"),"{error}");
+        let mapping = json!({"repo":"team/front","branch":"main"});
+        let mut run = services::empty_run();
+        run["worktree"]=json!(workspace);run["branch"]=json!(branch);run["productMapping"]=mapping.clone();
+        run["preparingRepository"]=json!({"worktree":cwd,"remote":origin,"branch":branch,"base":base});
+        Storage::new(&data).save(&json!({"tasks":[{"id":"a","kind":"story","no":12308,"run":run}]})).unwrap();
+        let runtime = Runtime::new(data,Arc::new(|_,_|{})).unwrap();
+        let config = json!({"gitlab":{"baseUrl":api,"token":"fixture"}});
+        runtime.prepare_workspace("a",&config,&mapping,&Arc::new(Job::new())).await.unwrap();
+        assert_eq!(std::fs::read_to_string(cwd.join(&relative)).unwrap().replace("\r\n","\n"),"long path fixture\n");
+        assert_eq!(command("git",&["config","--local","core.longpaths"],Some(&cwd)).await.unwrap(),"true");
+        assert!(runtime.diff("a").await.unwrap().is_empty());
+        runtime.update("a",|t|t["run"]["state"]=json!("done")).await.unwrap();
+        runtime.call("cleanup",json!({"mode":"done"})).await.unwrap();
+        assert!(!workspace.exists());
         server.abort();
     }
 

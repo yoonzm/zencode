@@ -29,6 +29,11 @@ pub fn directory(repo: &str) -> String {
     format!("{label}-{}", &digest[..12])
 }
 
+pub fn worktree_directory(repo: &str) -> String {
+    let directory = directory(repo);
+    format!("r-{}", &directory[directory.len()-12..])
+}
+
 pub async fn diff(repo: &Value) -> Result<String> {
     let cwd = Path::new(text(repo, "worktree"));
     command("git", &["add", "-N", "--", ".", ":(top,exclude).verification", ":(top,exclude).zencode-repos"], Some(cwd)).await?;
@@ -52,6 +57,8 @@ mod tests {
     fn repository_links_deduplicate_and_directory_names_do_not_collide() {
         assert_eq!(links(&json!({"repos":[{"repo":"a/app","branch":"main"},{"repo":"a/app","branch":"main"},{"repo":"b/app","branch":"dev"}]})).unwrap().len(),2);
         assert_ne!(directory("a/app"),directory("b/app"));
+        assert_ne!(worktree_directory("a/app"),worktree_directory("b/app"));
+        assert_eq!(worktree_directory("a/app").len(),14);
         assert!(links(&json!({"repos":[{"repo":"a/app","branch":""}]})).is_err());
     }
 }

@@ -23,6 +23,8 @@ impl Runtime {
             std::fs::create_dir_all(&pool).map_err(|e|e.to_string())?;
             services::repository_command(&["init","--bare"],Some(&pool),cancel).await?;
         }
+        #[cfg(windows)]
+        services::repository_command(&["config","--local","core.longpaths","true"],Some(&pool),cancel).await?;
         if services::repository_command(&["remote","get-url","origin"],Some(&pool),cancel).await.is_err() {
             services::repository_command(&["remote","add","origin",remote],Some(&pool),cancel).await?;
         }
@@ -57,6 +59,25 @@ impl Runtime {
             services::repository_command(&["worktree","add","--no-track","-b",branch,&cwd.to_string_lossy(),&base],Some(&pool),cancel).await?;
         }
         Ok(base)
+    }
+
+    pub(super) async fn complete_repository_checkout(&self, id: &str, cwd: &Path, base: &str, job: &Job) -> Result<()> {
+        let cancel = Some((&job.stopped,&job.paused));
+        let index = services::repository_command(&["rev-parse","--git-path","index"],Some(cwd),cancel).await?;
+        let index = cwd.join(index);
+        if index.exists() && self.task(id).await?["run"]["preparingRepository"]["restoringCheckout"] != true { return Ok(()); }
+        // A failed initial checkout may leave files but no index. Rebuild its index and
+        // fill only missing files; never overwrite files already edited by the user.
+        self.update(id,|t|t["run"]["preparingRepository"]["restoringCheckout"]=json!(true)).await?;
+        if !index.exists() { services::repository_command(&["read-tree",base],Some(cwd),cancel).await?; }
+        let missing = services::repository_command(&["ls-files","--deleted","-z"],Some(cwd),cancel).await?;
+        let paths = missing.split('\0').filter(|p|!p.is_empty()).collect::<Vec<_>>();
+        for paths in paths.chunks(16) {
+            let mut args = vec!["checkout-index","--"];
+            args.extend_from_slice(paths);
+            services::repository_command(&args,Some(cwd),cancel).await?;
+        }
+        Ok(())
     }
 
     // Deletion first stages the whole task directory transactionally. Repair only after the
