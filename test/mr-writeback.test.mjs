@@ -11,10 +11,10 @@ test('a legacy created MR remains accessible without offering ZenTao writeback',
       import {TaskDetail} from './src/components/views/task-detail';
       import {TooltipProvider} from './src/components/ui/tooltip';
       import {store} from '@/store/state';
-      export function render(created, manual = false) {
+      export function render(created, manual = false, multi = false) {
         store.state = {tab:'run', platform:'win', config:{zentao:{baseUrl:'https://zentao.example'}}, tasks:[{
           id:'bug-1', no:1, manual, kind:'bug', title:'Task', product:'Product', module:'Module', priority:3, assignee:'me',
-          run:{state:'review', events:[], files:[], viewed:[], ...(created ? {mr:{iid:260,url:'https://gitlab.example/mr/260'},writebackError:'服务返回空响应'} : {})}
+          run:{state:'review', events:[], files:[], viewed:[], ...(created ? {mr:{iid:260,url:'https://gitlab.example/mr/260'},writebackError:'服务返回空响应'} : {}), ...(multi ? {mrs:[{repo:'team/front',iid:260,url:'https://gitlab.example/front/260'},{repo:'team/api',iid:14,url:'https://gitlab.example/api/14'}]} : {})}
         }]};
         return renderToStaticMarkup(<TooltipProvider><TaskDetail id="bug-1" /></TooltipProvider>);
       }
@@ -41,4 +41,6 @@ test('a legacy created MR remains accessible without offering ZenTao writeback',
   assert.ok(manual.includes('Bug N1'));
   assert.ok(!manual.includes('在禅道中打开'));
   assert.ok(!manual.includes('禅道原文'));
+  const multi = module.exports.render(true, false, true);
+  for (const label of ['各仓库 Merge Request', 'team/front', 'team/api', '!14']) assert.ok(multi.includes(label), label);
 });

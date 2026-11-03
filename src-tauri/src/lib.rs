@@ -4,6 +4,7 @@ mod manual;
 mod input_images;
 pub mod codex;
 mod cleanup;
+mod workspace;
 mod matching;
 mod matching_evidence;
 mod matching_scope;

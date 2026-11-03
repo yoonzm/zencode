@@ -110,14 +110,14 @@ async fn sync_uses_token_and_filters_real_assignee() {
     let (tasks, products) = sync(&config).await.unwrap();
     assert_eq!(tasks.len(), 1);
     assert_eq!(tasks[0]["id"], "bug-7");
-    assert_eq!(tasks[0]["repoId"], "team/app");
+    assert_eq!(tasks[0]["repoIds"], json!(["team/app"]));
     assert_eq!(tasks[0]["attachments"][0]["id"], 22);
     assert_eq!(products, vec!["P"]);
     assert!(!calls.lock().unwrap().iter().any(|p| p.ends_with("/8")));
 }
 
 #[tokio::test]
-async fn multi_repo_sync_preserves_legacy_runs_and_stable_repo_identity() {
+async fn multi_repo_sync_preserves_one_source_task_and_legacy_run_across_repository_reordering() {
     use zencode_core::{runtime::Runtime, services::empty_run, storage::Storage};
     let base = server(Arc::new(|route, request| {
         assert!(request.starts_with("GET "));
@@ -135,19 +135,19 @@ async fn multi_repo_sync_preserves_legacy_runs_and_stable_repo_identity() {
     let rt = Runtime::new(root.path().into(), Arc::new(|_, _| {})).unwrap();
     let mut config = json!({"zentao":{"baseUrl":base,"auth":"token","secret":"fixture","autoRun":false},"mappings":[{"product":"P","repos":[{"repo":"team/web","branch":"main"},{"repo":"team/api","branch":"develop"}]}]});
     let first = rt.call("sync", json!({"config":config})).await.unwrap();
-    assert_eq!(first.as_array().unwrap().len(), 2);
+    assert_eq!(first.as_array().unwrap().len(), 1);
     assert_eq!(first[0]["id"], "bug-7");
     assert_eq!(first[0]["run"]["threadId"], "keep-thread");
-    assert_eq!(first[1]["run"]["state"], "idle");
+    assert_eq!(first[0]["repoIds"], json!(["team/web","team/api"]));
     config["mappings"][0]["repos"].as_array_mut().unwrap().reverse();
     let second = rt.call("sync", json!({"config":config})).await.unwrap();
-    assert_eq!(second[0]["id"], first[1]["id"]);
-    assert_eq!(second[1]["id"], first[0]["id"]);
-    assert_eq!(second[1]["run"]["threadId"], "keep-thread");
-    rt.call("delete", json!({"id":first[1]["id"]})).await.unwrap();
+    assert_eq!(second.as_array().unwrap().len(),1);
+    assert_eq!(second[0]["id"], first[0]["id"]);
+    assert_eq!(second[0]["run"]["threadId"], "keep-thread");
+    rt.call("delete", json!({"id":first[0]["id"]})).await.unwrap();
     let third = rt.call("sync", json!({"config":config})).await.unwrap();
     assert_eq!(third[0]["run"]["state"], "idle");
-    assert_eq!(third[1]["run"]["threadId"], "keep-thread");
+    assert_eq!(third.as_array().unwrap().len(),1);
 }
 #[tokio::test]
 async fn sync_always_limits_products_and_applies_assignee_scope() {
@@ -180,7 +180,7 @@ async fn sync_always_limits_products_and_applies_assignee_scope() {
             let (tasks, products) = sync(&config).await.unwrap();
             assert_eq!(products, vec!["Mapped", "Unmapped"]);
             assert_eq!(tasks.len(), if !mapped {0} else if scope == "mine" {2} else {4});
-            assert!(tasks.iter().all(|t| t["repoId"] == "team/app"));
+            assert!(tasks.iter().all(|t| t["repoIds"] == json!(["team/app"])));
             let calls = calls.lock().unwrap();
             assert!(!calls.iter().any(|p| p.contains("/products/2/")));
             if !mapped {
@@ -235,7 +235,7 @@ async fn sync_includes_product_branches_across_story_pages() {
     let config = json!({"zentao":{"baseUrl":base,"auth":"token","secret":"fixture","account":"alice","scope":"mine"},"mappings":[{"product":"Mapped","repo":"team/app"}]});
     let (tasks, _) = sync(&config).await.unwrap();
     assert_eq!(tasks.iter().map(|t| t["id"].as_str().unwrap()).collect::<Vec<_>>(), vec!["story-1", "story-101"]);
-    assert!(tasks.iter().all(|t| t["repoId"] == "team/app" && t["assignee"] == "me"));
+    assert!(tasks.iter().all(|t| t["repoIds"] == json!(["team/app"]) && t["assignee"] == "me"));
 }
 
 #[tokio::test]
@@ -431,19 +431,23 @@ async fn execution_clones_target_branch_without_local_mapping() {
     let data = root.path().join("data");
     Storage::new(&data).save(&json!({"prefs":{},"tasks":[{"id":"bug-1","product":"P","repoId":"team/app","run":empty_run()}]})).unwrap();
     let rt = Runtime::new(data, Arc::new(|_, _| {})).unwrap();
-    let config = json!({"gitlab":{"baseUrl":base,"token":"fixture"},"codex":{"cliPath":"missing-codex-fixture"},"mappings":[{"product":"P","repos":[{"repo":"team/other","branch":"missing"},{"repo":"team/app","branch":"develop"}]}]});
+    let config = json!({"gitlab":{"baseUrl":base,"token":"fixture"},"codex":{"cliPath":"missing-codex-fixture"},"mappings":[{"product":"P","repos":[{"repo":"team/other","branch":"develop"},{"repo":"team/app","branch":"develop"}]}]});
     rt.call("start", json!({"id":"bug-1","config":config})).await.unwrap();
     let mut worktree = String::new();
     for _ in 0..500 {
         let state = rt.data.lock().await.clone();
-        if let Some(path) = state["tasks"][0]["run"]["worktree"].as_str() { worktree = path.into(); break; }
+        if state["tasks"][0]["run"]["repositories"].as_array().is_some_and(|r| r.len() == 2) { worktree = state["tasks"][0]["run"]["worktree"].as_str().unwrap().into(); break; }
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
     assert!(!worktree.is_empty(), "clone must succeed before the intentionally missing CLI fails");
-    let path = std::path::Path::new(&worktree);
-    assert_ne!(path, source);
-    assert_eq!(std::fs::read_to_string(path.join("selected.txt")).unwrap(), "target branch");
-    assert!(path.join(".git").is_dir(), "execution has an independent clone");
-    assert!(command("git", &["branch", "--show-current"], Some(path)).await.unwrap().starts_with("zencode/"));
+    let task = rt.data.lock().await["tasks"][0].clone();
+    assert_eq!(task["run"]["repositories"].as_array().unwrap().len(), 2);
+    for entry in task["run"]["repositories"].as_array().unwrap() {
+        let path = std::path::Path::new(entry["worktree"].as_str().unwrap());
+        assert_ne!(path, source);
+        assert_eq!(std::fs::read_to_string(path.join("selected.txt")).unwrap(), "target branch");
+        assert!(path.join(".git").is_dir(), "each repository has an independent clone");
+        assert!(command("git", &["branch", "--show-current"], Some(path)).await.unwrap().starts_with("zencode/"));
+    }
     rt.shutdown().await;
 }

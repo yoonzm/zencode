@@ -419,19 +419,10 @@ pub async fn sync(config: &Value) -> Result<(Vec<Value>, Vec<String>)> {
                 if let (Some(a), Some(b)) = (merged.as_object_mut(), detail.as_object()) {
                     a.extend(b.clone());
                 }
+                let mut task = task(&merged, kind, product, &Value::Null, text(&config["zentao"], "account"))?;
                 let links = mapping["repos"].as_array().cloned().unwrap_or_else(|| vec![mapping.clone()]);
-                let mut seen = std::collections::HashSet::new();
-                for link in links {
-                    if !seen.insert(text(&link, "repo").to_owned()) { continue; }
-                    let mut task = task(&merged, kind, product, &link, text(&config["zentao"], "account"))?;
-                    if mapping["repos"].is_array() {
-                        if text(&link, "repo").is_empty() { continue; }
-                        // Hex encoding is stable across reorder/removal and safe in checkout paths.
-                        let suffix: String = text(&link, "repo").bytes().map(|b| format!("{b:02x}")).collect();
-                        task["id"] = json!(format!("{}-{}", text(&task, "id"), suffix));
-                    }
-                    tasks.push(task);
-                }
+                task["repoIds"] = json!(links.iter().filter(|r| !text(r,"repo").is_empty()).map(|r| r["repo"].clone()).collect::<Vec<_>>());
+                if !tasks.iter().any(|t: &Value| t["id"] == task["id"]) { tasks.push(task); }
             }
         }
     }

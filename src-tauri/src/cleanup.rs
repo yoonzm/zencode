@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 pub fn same(a: &Value, b: &Value) -> bool {
     if a["manual"].as_bool().unwrap_or(false) != b["manual"].as_bool().unwrap_or(false) { return false; }
-    (!a["id"].is_null() && a["id"] == b["id"]) || (!a["no"].is_null() && a["kind"] == b["kind"] && a["no"] == b["no"] && a["repoId"] == b["repoId"])
+    (!a["id"].is_null() && a["id"] == b["id"]) || (a["manual"] != true && !a["no"].is_null() && a["kind"] == b["kind"] && a["no"] == b["no"])
 }
 pub fn closed(t: &Value) -> bool {
     matches!(text(t, "ztStatus"), "resolved" | "closed" | "cancelled" | "已解决" | "已完成" | "已关闭" | "已取消" | "已发布")
@@ -52,6 +52,12 @@ mod tests {
         let manual = json!({"id":"manual-1","manual":true,"kind":"bug","no":1,"repoId":"a"});
         let zentao = json!({"id":"bug-1","kind":"bug","no":1,"repoId":"a"});
         assert!(!same(&manual, &zentao)); assert!(!same(&zentao, &manual)); assert!(same(&manual, &manual));
+    }
+    #[test]
+    fn source_identity_is_shared_by_all_product_repositories() {
+        assert!(same(&json!({"id":"story-7-a","kind":"story","no":7,"repoId":"a"}), &json!({"id":"story-7","kind":"story","no":7,"repoId":""})));
+        assert!(!same(&json!({"kind":"story","no":7}), &json!({"kind":"bug","no":7})));
+        assert!(!same(&json!({"id":"manual-a","manual":true,"kind":"story","no":7}), &json!({"id":"manual-b","manual":true,"kind":"story","no":7})));
     }
     #[test]
     fn excludes_live_and_recent_tasks() {

@@ -88,6 +88,8 @@ export interface Run {
   files: DiffFile[];
   activity?: string;
   mr?: { iid: number; url: string };
+  mrs?: { repo: string; iid: number; url: string }[];
+  repositories?: { mapping: RepoLink; worktree: string; path: string; branch: string; base: string; mr?: { iid: number; url: string } }[];
   mrBusy?: boolean;
   viewed: string[];
   unread?: boolean;
@@ -137,6 +139,7 @@ export interface ZTask {
   updatedAt: number;
   deadline?: number;
   repoId: string;
+  repoIds?: string[];
   labels: string[];
   description: DescBlock[];
   attachments: Attachment[];

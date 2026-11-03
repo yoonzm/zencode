@@ -84,17 +84,15 @@ pub fn import(data: &Value, args: &Value) -> Result<(Value, Vec<Value>)> {
         let mapping = mappings.iter().find(|m| m["product"] == row["product"]).ok_or("所选产品没有仓库映射")?;
         let repos = mapping["repos"].as_array().filter(|r| !r.is_empty()).ok_or("所选产品没有仓库映射")?;
         no = no.checked_add(1).ok_or("手动任务编号已耗尽")?;
-        let mut seen = std::collections::HashSet::new();
         for repo in repos {
             if text(repo, "repo").is_empty() || text(repo, "branch").is_empty() { return Err("请补全仓库和分支配置".into()); }
-            if !seen.insert(text(repo, "repo")) { continue; }
-            made.push(json!({"id":format!("manual-{}", Uuid::new_v4()),"manual":true,"source":args["source"],"no":no,
-                "kind":row["kind"],"title":text(&row,"title").trim(),"priority":row["priority"],"ztStatus":"","product":row["product"],
-                "module":row["module"],"moduleKey":row["module"],"sprint":"","assignee":"me","reporter":"me",
-                "createdAt":crate::now(),"updatedAt":crate::now(),"repoId":repo["repo"],"labels":[],
-                "description":[{"type":"p","text":row["description"]},{"type":"list","title":"验收标准","items":row["criteria"]}],
-                "attachments":[],"history":[],"run":services::empty_run()}));
         }
+        made.push(json!({"id":format!("manual-{}", Uuid::new_v4()),"manual":true,"source":args["source"],"no":no,
+            "kind":row["kind"],"title":text(&row,"title").trim(),"priority":row["priority"],"ztStatus":"","product":row["product"],
+            "module":row["module"],"moduleKey":row["module"],"sprint":"","assignee":"me","reporter":"me",
+            "createdAt":crate::now(),"updatedAt":crate::now(),"repoId":"","repoIds":repos.iter().map(|r| r["repo"].clone()).collect::<Vec<_>>(),"labels":[],
+            "description":[{"type":"p","text":row["description"]},{"type":"list","title":"验收标准","items":row["criteria"]}],
+            "attachments":[],"history":[],"run":services::empty_run()}));
     }
     let tasks = next["tasks"].as_array_mut().ok_or("本地任务数据无效")?;
     tasks.splice(0..0, made.clone());
@@ -110,8 +108,8 @@ mod tests {
         let data = json!({"tasks":[],"manualSequence":4,"prefs":{"config":{"mappings":[{"product":"P","repos":[{"repo":"a","branch":"main"},{"repo":"b","branch":"dev"}]}]}}});
         let args = json!({"source":"<raw>","candidates":[{"on":true,"title":"Task","kind":"story","product":"P","module":"M","priority":2,"description":"<T>","criteria":["works"]}]});
         let (next, made) = import(&data, &args).unwrap();
-        assert_eq!(made.len(), 2); assert_eq!(made[0]["no"], 5); assert_eq!(made[1]["no"], 5);
-        assert_ne!(made[0]["id"], made[1]["id"]); assert_eq!(made[0]["run"]["state"], "idle");
+        assert_eq!(made.len(), 1); assert_eq!(made[0]["no"], 5);
+        assert_eq!(made[0]["repoIds"], json!(["a","b"])); assert_eq!(made[0]["run"]["state"], "idle");
         assert_eq!(made[0]["source"], "<raw>"); assert_eq!(made[0]["description"][0]["text"], "<T>");
         let (_, again) = import(&next, &args).unwrap(); assert_eq!(again[0]["no"], 6);
         let mut invalid = args.clone(); invalid["candidates"][0]["product"] = json!("unknown");

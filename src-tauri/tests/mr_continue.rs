@@ -88,7 +88,8 @@ require('node:readline').createInterface({input:process.stdin}).on('line',line=>
     std::fs::write(worktree.join("app.txt"),"second revision\n").unwrap();
     rt.call("refreshDiff",json!({"id":"bug-7"})).await.unwrap();
     control(dir.path(),"closed",false,"zencode/bug-7");
-    assert!(rt.call("mr",json!({"id":"bug-7","config":config})).await.unwrap_err().contains("已关闭"));
+    let closed_error = rt.call("mr",json!({"id":"bug-7","config":config})).await.unwrap_err();
+    assert!(closed_error.contains("已关闭"), "{closed_error}");
     assert_eq!(command("git",&["rev-parse","HEAD"],Some(&worktree)).await.unwrap(),first);
     control(dir.path(),"opened",true,"zencode/bug-7");
     assert!(rt.call("mr",json!({"id":"bug-7","config":config})).await.is_err());

@@ -111,6 +111,8 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
     let mut run = empty_run();
     run["worktree"] = json!(repo);
     run["base"] = json!(base);
+    run["branch"] = json!("main");
+    run["mapping"] = json!({"repo":"team/app","branch":"main"});
     run["threadId"] = json!("fixture");
     let root = dir.path().join("data");
     Storage::new(&root).save(&json!({"prefs":{},"tasks":[{"id":"bug-1","product":"P","repoId":"team/app","run":run}]})).unwrap();

@@ -243,6 +243,15 @@ export function TaskDetail({ id, onBack }: { id: string; onBack?: () => void }) 
 
         <div className="mt-3.5">
           <Actions task={task} />
+          {run.mrs && run.mrs.length > 1 && (
+            <div className="mt-2 flex flex-wrap gap-2" aria-label="各仓库 Merge Request">
+              {run.mrs.map(mr => (
+                <Button key={mr.repo} variant="secondary" size="sm" onClick={() => openExternal(mr.url)}>
+                  <GitPullRequest />{mr.repo} · !{mr.iid}<ExternalLink />
+                </Button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div role="tablist" aria-label="任务详情" className="mt-3 flex items-center gap-5 border-b border-border">
