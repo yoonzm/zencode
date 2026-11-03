@@ -3,7 +3,7 @@ import { Check, CircleAlert, CircleX, Circle, Loader, ShieldCheck, RotateCcw, Gl
 import type { Verify, VerifyStep, ZTask } from "@/data/types";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty";
-import { reverify } from "@/store/actions";
+import { openExternal, reverify } from "@/store/actions";
 import { VERIFY_LABEL, verifyBusy, verifyDone } from "@/data/verify";
 import { relTime } from "@/lib/time";
 import { navigate } from "@/lib/route";
@@ -15,6 +15,13 @@ const PHASES: { key: Verify["state"][]; label: string }[] = [
   { key: ["planning"], label: "测试计划" },
   { key: ["running"], label: "端到端验证" },
 ];
+
+function targetUrl(target?: string) {
+  try {
+    const url = new URL(target || "");
+    return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password ? url.href : undefined;
+  } catch { return undefined; }
+}
 
 export function verdictTone(s?: Verify["state"]) {
   return s === "passed" ? "text-success" : s === "failed" ? "text-danger" : s === "unverified" ? "text-warning" : "text-accent";
@@ -58,6 +65,7 @@ export function VerifyTab({ task }: { task: ZTask }) {
   }
   const busy = verifyBusy(v.state);
   const tone = verdictTone(v.state);
+  const url = targetUrl(v.target);
   const Icon = v.state === "passed" ? Check : v.state === "failed" ? CircleX : v.state === "unverified" || v.state === "awaiting-plan" ? CircleAlert : Loader;
 
   return (
@@ -69,7 +77,7 @@ export function VerifyTab({ task }: { task: ZTask }) {
             <h3 role="status" className={cn("text-base font-semibold", tone)}>{v.verificationRequired === false ? "无需额外验证" : VERIFY_LABEL[v.state]}</h3>
             {v.summary && <p className="mt-1 text-sm leading-[1.7] text-foreground/90">{v.summary}</p>}
             <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              {v.target && <span className="inline-flex items-center gap-1">{v.where === "server" ? <Server className="size-3.5" /> : <Globe className="size-3.5" />}{v.where === "server" ? "测试服务器" : "本机"} · <span className="font-mono">{v.target}</span></span>}
+              {v.target && <span className="inline-flex min-w-0 items-start gap-1">{v.where === "server" ? <Server className="size-3.5 shrink-0" /> : <Globe className="size-3.5 shrink-0" />}<span className="shrink-0">{v.where === "server" ? "测试服务器" : "本机"} ·</span>{url ? <a href={url} onClick={event => { event.preventDefault(); openExternal(url); }} title="在浏览器中打开验证地址" className="min-w-0 break-all rounded-sm font-mono text-accent underline underline-offset-2 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60">{v.target}</a> : <span className="min-w-0 break-all font-mono">{v.target}</span>}</span>}
               {v.finishedAt ? <span>{relTime(v.finishedAt)}</span> : null}
             </div>
           </div>
