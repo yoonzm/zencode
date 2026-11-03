@@ -72,6 +72,8 @@ ZenTao  ──sync──▶  ZenCode  ──isolated clone──▶  Codex CLI
 
 Git push uses your own SSH keys / credential helper.
 
+Task repositories use Git worktrees backed by a persistent bare repository pool in the application data directory (`repository-pool`). Each task has its own branch, working files and index; history is downloaded once per repository and subsequent starts fetch incremental updates. Use the app to clean up task workspaces, and keep the repository pool in place while tasks reference it. Multi-repository tasks open as one VS Code workspace.
+
 ## Build from source
 
 Requires Node.js 24, stable Rust, Git and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).

@@ -64,6 +64,7 @@ require('node:readline').createInterface({input:process.stdin}).on('line',line=>
     let cli={use std::os::unix::fs::PermissionsExt;let cli=dir.path().join("fixture");std::fs::write(&cli,format!("#!/usr/bin/env node\n{script}")).unwrap();std::fs::set_permissions(&cli,std::fs::Permissions::from_mode(0o700)).unwrap();cli};
     let mapping=json!({"repo":"team/app","branch":"main"});
     let mut run=empty_run();run["worktree"]=json!(worktree);run["base"]=json!(base);run["branch"]=json!("zencode/bug-7");run["mapping"]=mapping.clone();
+    run["repositories"]=json!([{"mapping":mapping,"worktree":worktree,"base":base,"branch":"zencode/bug-7","path":""}]);
     Storage::new(&data_root).save(&json!({"prefs":{},"tasks":[{"id":"bug-7","kind":"bug","no":7,"title":"Fix app","product":"P","repoId":"team/app","description":[],"run":run}]})).unwrap();
     let mut config=json!({"gitlab":{"baseUrl":url,"token":"fixture","mrMode":"manual","mrDraft":false},"codex":{"cliPath":cli},"mappings":[{"product":"P","repos":[mapping]}]});
     let rt=Runtime::new(data_root.clone(),Arc::new(|_,_|{})).unwrap();

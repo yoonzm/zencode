@@ -88,6 +88,66 @@ pub async fn command(file: &str, args: &[&str], cwd: Option<&Path>) -> Result<St
         .trim_end()
         .to_string())
 }
+
+// Network transfers need their own deadline and cancellation must stop Git's helpers too.
+pub async fn repository_command(args: &[&str], cwd: Option<&Path>, cancel: Option<(&std::sync::atomic::AtomicBool, &std::sync::atomic::AtomicBool)>) -> Result<String> {
+    use tokio::io::AsyncReadExt;
+    use std::sync::atomic::Ordering;
+    let mut cmd = executable("git", &args.iter().map(|s| s.to_string()).collect::<Vec<_>>())?;
+    if let Some(cwd) = cwd { cmd.current_dir(cwd); }
+    cmd.env("GIT_TERMINAL_PROMPT", "0").stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).kill_on_drop(true);
+    #[cfg(unix)]
+    cmd.process_group(0);
+    let mut child = cmd.spawn().map_err(|e| format!("git: {e}"))?;
+    let mut stdout = child.stdout.take().unwrap();
+    let mut stderr = child.stderr.take().unwrap();
+    let out = tokio::spawn(async move { let mut bytes = Vec::new(); stdout.read_to_end(&mut bytes).await.map(|_| bytes) });
+    let err = tokio::spawn(async move {
+        let mut tail = Vec::new(); let mut chunk = [0;4096];
+        loop {
+            let n = stderr.read(&mut chunk).await?;
+            if n == 0 { break; }
+            tail.extend_from_slice(&chunk[..n]);
+            if tail.len() > 8192 { tail.drain(..tail.len()-8192); }
+        }
+        Ok::<_,std::io::Error>(tail)
+    });
+    let deadline = tokio::time::sleep(Duration::from_secs(900));
+    tokio::pin!(deadline);
+    let mut poll = tokio::time::interval(Duration::from_millis(200));
+    let result = loop {
+        tokio::select! {
+            result = child.wait() => break result.map_err(|e| e.to_string()),
+            _ = &mut deadline => break Err("超过 15 分钟".to_owned()),
+            _ = poll.tick() => {
+                if cancel.is_some_and(|(stopped,paused)| stopped.load(Ordering::SeqCst) || paused.load(Ordering::SeqCst)) {
+                    break Err("执行已取消，工作区保留".to_owned());
+                }
+            }
+        }
+    };
+    if result.is_err() {
+        if let Some(pid) = child.id() {
+            #[cfg(windows)]
+            { let _ = command("taskkill", &["/pid", &pid.to_string(), "/T", "/F"], None).await; }
+            #[cfg(unix)]
+            unsafe { libc::kill(-(pid as i32), libc::SIGKILL); }
+        }
+        let _ = child.kill().await;
+    }
+    // A misbehaving inherited pipe must not prevent cancellation from completing.
+    let mut out = out; let mut err = err;
+    let streams = tokio::time::timeout(Duration::from_secs(3), async { (&mut out).await.map_err(|e|e.to_string())?.map_err(|e|e.to_string()) }).await;
+    if streams.is_err() { out.abort(); }
+    let errors = tokio::time::timeout(Duration::from_secs(3), &mut err).await;
+    let tail = match errors { Ok(Ok(Ok(bytes))) => String::from_utf8_lossy(&bytes).trim().to_owned(), _ => { err.abort(); String::new() } };
+    let operation = args.first().copied().unwrap_or("操作");
+    let status = result.map_err(|e|format!("git {operation}：{e}\n{tail}"))?;
+    if !status.success() { return Err(format!("git {operation} 退出 {status}：{tail}")); }
+    let bytes = streams.map_err(|_|"Git 输出读取超时")??;
+    Ok(String::from_utf8_lossy(&bytes).trim_end().to_owned())
+}
 pub fn base_url(raw: &str) -> Result<String> {
     let u = url::Url::parse(raw).map_err(|_| "请输入有效服务地址")?;
     if !["https", "http"].contains(&u.scheme())
@@ -312,7 +372,7 @@ pub fn gitlab(c: &Value) -> Result<Api> {
     )
 }
 pub fn empty_run() -> Value {
-    json!({"state":"idle","model":"Codex · 标准","events":[],"files":[],"queue":[],"scriptId":"","patchKeys":{},"end":"review","viewed":[]})
+    json!({"state":"idle","model":"Codex · 标准","events":[],"files":[],"queue":[],"repositories":[],"scriptId":"","patchKeys":{},"end":"review","viewed":[]})
 }
 fn name(v: &Value) -> String {
     v.as_str().map(str::to_owned).unwrap_or_else(|| {

@@ -169,12 +169,11 @@ export function TaskDetail({ id, onBack }: { id: string; onBack?: () => void }) 
   const run = task.run;
   const dirs = workDirs(task, mappings);
   const noDir = run.state === "idle" || !!run.cleaned;
-  const suffix = (d: { name: string }) => (dirs.length > 1 ? ` · ${d.name}` : "");
   const dirEntries: MenuEntry[] = dirs.length
     ? [
-        ...dirs.map((d) => ({ label: `在 VS Code 中打开${suffix(d)}${noDir ? (run.cleaned ? "（已清理）" : "（尚未开始）") : ""}`, icon: Code, disabled: noDir, onClick: () => openInEditor(task.id, { repo: d.repo }) })),
-        ...dirs.map((d) => ({ label: `在文件夹中打开${suffix(d)}`, icon: FolderOpen, disabled: noDir, onClick: () => openFolder(task.id, d.repo) })),
-        { label: dirs.length > 1 ? "复制工作目录路径" : "复制路径", icon: Copy, disabled: noDir, onClick: () => copyText(dirs.map((d) => d.path).join("\n"), "已复制路径") },
+        { label: "在 VS Code 中打开工作区", icon: Code, disabled: noDir, onClick: () => openInEditor(task.id) },
+        { label: "在文件夹中打开工作区", icon: FolderOpen, disabled: noDir, onClick: () => openFolder(task.id) },
+        { label: "复制工作区路径", icon: Copy, disabled: noDir, onClick: () => copyText(dirs[0].path, "已复制路径") },
       ]
     : [];
   const due = task.deadline && !["done", "completed"].includes(task.run.state) ? dueLabel(task.deadline) : null;

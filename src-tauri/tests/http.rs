@@ -285,6 +285,7 @@ async fn submission_preserves_existing_mr_without_zentao_requests() {
     run["worktree"] = json!(repo);
     run["mr"] = json!({"iid":4,"url":link});
     run["mapping"] = json!({"repo":"team/app","branch":"main"});
+    run["repositories"] = json!([{"mapping":run["mapping"],"worktree":repo,"base":commit_base,"branch":"main","mr":run["mr"],"path":""}]);
     let data = dir.path().join("data");
     Storage::new(&data).save(&json!({"prefs":{},"tasks":[{"id":"bug-1","no":1,"kind":"bug","title":"Fix","run":run}]})).unwrap();
     let runtime = Runtime::new(data, Arc::new(|_, _| {})).unwrap();
@@ -377,6 +378,7 @@ async fn legacy_pending_mr_finishes_without_zentao_access() {
         run["worktree"] = json!(repo);
         run["mr"] = json!({"iid":4,"url":link});
         run["mapping"] = json!({"repo":"team/app","branch":"main"});
+    run["repositories"] = json!([{"mapping":run["mapping"],"worktree":repo,"base":commit_base,"branch":"main","mr":run["mr"],"path":""}]);
         run["writebackError"] = json!("legacy error");
         let root = dir.path().join("data");
         Storage::new(&root).save(&json!({"prefs":{},"tasks":[{"id":"bug-1","no":1,"kind":"bug","ztStatus":status,"run":run}]})).unwrap();
@@ -415,7 +417,7 @@ async fn gitlab_repository_and_branch_lists_paginate() {
 }
 
 #[tokio::test]
-async fn execution_clones_target_branch_without_local_mapping() {
+async fn execution_prepares_target_branch_worktrees_without_local_mapping() {
     use zencode_core::{runtime::Runtime, services::{command, empty_run}, storage::Storage};
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("source");
@@ -439,14 +441,14 @@ async fn execution_clones_target_branch_without_local_mapping() {
         if state["tasks"][0]["run"]["repositories"].as_array().is_some_and(|r| r.len() == 2) { worktree = state["tasks"][0]["run"]["worktree"].as_str().unwrap().into(); break; }
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
-    assert!(!worktree.is_empty(), "clone must succeed before the intentionally missing CLI fails");
+    assert!(!worktree.is_empty(), "worktrees must be ready before the intentionally missing CLI fails");
     let task = rt.data.lock().await["tasks"][0].clone();
     assert_eq!(task["run"]["repositories"].as_array().unwrap().len(), 2);
     for entry in task["run"]["repositories"].as_array().unwrap() {
         let path = std::path::Path::new(entry["worktree"].as_str().unwrap());
         assert_ne!(path, source);
         assert_eq!(std::fs::read_to_string(path.join("selected.txt")).unwrap(), "target branch");
-        assert!(path.join(".git").is_dir(), "each repository has an independent clone");
+        assert!(path.join(".git").is_file(), "each repository uses a linked worktree");
         assert!(command("git", &["branch", "--show-current"], Some(path)).await.unwrap().starts_with("zencode/"));
     }
     rt.shutdown().await;

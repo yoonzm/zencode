@@ -304,14 +304,18 @@ impl Runtime {
             let root = self.root.clone();
             let copy = key.clone();
             let started = Instant::now();
-            let result = tokio::task::spawn_blocking(move || -> Result<()> {
+            let result = async {
                 let path = trash_path(&root, &copy)?;
-                match std::fs::remove_dir_all(&path) {
-                    Ok(()) => Ok(()),
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-                    Err(e) => Err(e.to_string()),
-                }
-            }).await.map_err(|e| e.to_string()).and_then(|r| r);
+                self.remove_repository_worktrees(Path::new(text(&record,"source")), &path).await?;
+                tokio::task::spawn_blocking(move || -> Result<()> {
+                    let path = trash_path(&root, &copy)?;
+                    match std::fs::remove_dir_all(&path) {
+                        Ok(()) => Ok(()),
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                        Err(e) => Err(e.to_string()),
+                    }
+                }).await.map_err(|e| e.to_string()).and_then(|r| r)
+            }.await;
             eprintln!("delete cleanup={key} elapsedMs={} success={}", started.elapsed().as_millis(), result.is_ok());
             let result = match result { Ok(()) => self.remove_delete_record(&key).await, Err(e) => Err(e) };
             if let Err(error) = result {

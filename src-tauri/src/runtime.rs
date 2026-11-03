@@ -20,6 +20,8 @@ use uuid::Uuid;
 mod deletion;
 #[path = "task_workspace.rs"]
 mod task_workspace;
+#[path = "repo_pool.rs"]
+mod repo_pool;
 pub type Emit = Arc<dyn Fn(&str, Value) + Send + Sync>;
 struct Job {
     session: Mutex<Option<Arc<Session>>>,
@@ -62,6 +64,7 @@ pub struct Runtime {
     verification_tools: crate::verification_tools::Tools,
     delete_cleaner_started: AtomicBool,
     delete_wake: Arc<Notify>,
+    repository_locks: Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>,
 }
 impl Runtime {
     pub fn new(root: PathBuf, emit: Emit) -> Result<Arc<Self>> {
@@ -69,14 +72,6 @@ impl Runtime {
         let mut data = storage.load()?;
         if data["pendingDeletes"].is_array() || data["tasks"].as_array().is_some_and(|ts| ts.iter().any(|t| t["run"]["deleting"] == true)) {
             deletion::recover(&root, &mut data)?;
-            storage.save(&data)?;
-        }
-        if data["taskModel"] != "product-v1" {
-            let backup = root.join("state.before-product-tasks.json");
-            if !backup.exists() && root.join("state.json").exists() {
-                std::fs::copy(root.join("state.json"), backup).map_err(|e| e.to_string())?;
-            }
-            crate::workspace::migrate(&mut data);
             storage.save(&data)?;
         }
         if let Some(tasks) = data["tasks"].as_array_mut() {
@@ -111,6 +106,7 @@ impl Runtime {
             verification_tools: crate::verification_tools::Tools::default(),
             delete_cleaner_started: AtomicBool::new(false),
             delete_wake: Arc::new(Notify::new()),
+            repository_locks: Mutex::new(HashMap::new()),
         }))
     }
     async fn persist(&self) -> Result<()> {
@@ -457,7 +453,6 @@ impl Runtime {
                         if let Some(previous) = old.iter().find(|p| crate::cleanup::same(p, t)) {
                             t["id"] = previous["id"].clone();
                             t["run"] = previous["run"].clone();
-                            if !previous["legacyRepositoryTasks"].is_null() { t["legacyRepositoryTasks"] = previous["legacyRepositoryTasks"].clone(); }
                             t["updatedAt"] = json!(t["updatedAt"].as_i64().unwrap_or(0).max(previous["updatedAt"].as_i64().unwrap_or(0)));
                             t["lastActivityAt"] = previous["lastActivityAt"].clone();
                         } else if args["config"]["zentao"]["autoRun"].as_bool().unwrap_or(true)
@@ -532,6 +527,20 @@ impl Runtime {
                 if raw.is_empty() || task["run"]["cleaned"].as_bool() == Some(true) { return Err("任务尚无工作目录或已清理".into()); }
                 let root = std::fs::canonicalize(raw).map_err(|e| e.to_string())?;
                 let file = text(&args, "file");
+                if args["editor"] == true && file.is_empty() && text(&args,"repo").is_empty() {
+                    let repositories = crate::workspace::repositories(&task["run"]);
+                    if repositories.len() > 1 {
+                        let mut folders = Vec::new();
+                        for repo in repositories {
+                            let path = std::fs::canonicalize(text(&repo,"worktree")).map_err(|e|e.to_string())?;
+                            let relative = path.strip_prefix(&root).map_err(|_|"仓库不在任务工作目录中")?;
+                            folders.push(json!({"name":repo["mapping"]["repo"],"path":relative.to_string_lossy().replace('\\',"/")}));
+                        }
+                        let path = root.join(".zencode.code-workspace");
+                        std::fs::write(&path,serde_json::to_vec_pretty(&json!({"folders":folders})).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
+                        return Ok(json!(path.to_string_lossy().trim_start_matches("\\\\?\\")));
+                    }
+                }
                 let target = if file.is_empty() && !text(&args,"repo").is_empty() {
                     crate::workspace::repositories(&task["run"]).iter()
                         .find(|r| text(&r["mapping"],"repo") == text(&args,"repo"))
@@ -729,7 +738,10 @@ impl Runtime {
             // A starting job may have created its workspace while it was stopping.
             let current = self.task(text(t, "id")).await?;
             if let Some(path) = crate::cleanup::workspace(&self.root, &current)? {
-                std::fs::remove_dir_all(path).map_err(|e| format!("清理工作目录失败：{e}"))?;
+                self.remove_repository_worktrees(&path, &path).await?;
+                if let Err(e) = std::fs::remove_dir_all(path) {
+                    if e.kind() != std::io::ErrorKind::NotFound { return Err(format!("清理工作目录失败：{e}")); }
+                }
             }
             let mut data = self.data.lock().await;
             let mut next = data.clone();
@@ -1408,6 +1420,7 @@ fn task_prompt(t: &Value, mapping: &Value, instruction: &str, resume: bool) -> S
         prompt.push_str("\n本任务工作区包含产品的全部关联仓库，共同服务于这一条需求。请先结合需求判断需要修改的仓库，可跨仓库协同修改；未涉及的仓库保持不变。各仓库的目录、目标分支、用途和测试命令如下：\n");
         prompt.push_str(&json!(repositories.iter().map(|r| json!({"repo":r["mapping"]["repo"],"path":r["worktree"],"targetBranch":r["mapping"]["branch"],"role":r["mapping"]["role"],"testCmd":r["mapping"]["testCmd"]})).collect::<Vec<_>>()).to_string());
         prompt.push_str("\n工作区根目录可能不是 Git 仓库，Git 命令和项目测试应在对应仓库目录中运行。验证证据保存在任务根目录 .verification 中。禁止将其他关联仓库目录加入任何仓库的提交。");
+        prompt.push_str("\n仓库可能使用共享仓库池的 Git worktree。仅操作当前任务分支；不要修改共享 remote、其他任务分支或共享 Git 配置，不要执行仓库池清理。需要任务专用配置时使用 git -c 临时参数。");
     }
     prompt
 }
@@ -1611,7 +1624,7 @@ mod tests {
         std::fs::write(cwd.join(".verification/bug-1/log.json"), b"{}").unwrap();
         std::fs::write(cwd.join("app.ts"), b"export const fixed = true;\n").unwrap();
         command("git", &["add","--all"], Some(&cwd)).await.unwrap();
-        Storage::new(root.path()).save(&json!({"prefs":{},"tasks":[{"id":"bug-1","run":{"state":"review","worktree":cwd,"base":base}}]})).unwrap();
+        Storage::new(root.path()).save(&json!({"prefs":{},"tasks":[{"id":"bug-1","run":{"state":"review","worktree":cwd,"base":base,"repositories":[{"worktree":cwd,"base":base,"path":""}]}}]})).unwrap();
         let rt = Runtime::new(root.path().into(), Arc::new(|_,_| {})).unwrap();
         let diff = rt.diff("bug-1").await.unwrap();
         assert!(diff.contains("app.ts"));
