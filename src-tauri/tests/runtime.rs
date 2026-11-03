@@ -18,10 +18,8 @@ async fn state(rt: &Arc<Runtime>, expected: &str) -> Value {
         rt.data.lock().await["tasks"][0]
     );
 }
-#[cfg(unix)]
 #[tokio::test]
 async fn approval_pause_resume_worktree_diff_and_restart() {
-    use std::os::unix::fs::PermissionsExt;
     let root = tempfile::tempdir().unwrap();
     let repo = root.path().join("repo");
     std::fs::create_dir(&repo).unwrap();
@@ -43,27 +41,46 @@ async fn approval_pause_resume_worktree_diff_and_restart() {
     command("git", &["commit", "-m", "initial"], Some(&repo))
         .await
         .unwrap();
-    let cli = root.path().join("codex-fixture");
-    std::fs::write(&cli,r#"#!/usr/bin/env python3
-import sys,json,pathlib
-def send(v): print(json.dumps(v),flush=True)
-for line in sys.stdin:
- r=json.loads(line); m=r.get('method'); i=r.get('id');p=r.get('params',{})
- if m=='initialize': send({'id':i,'result':{'userAgent':'fixture'}})
- elif m in ['thread/start','thread/resume']: send({'id':i,'result':{'thread':{'id':'test-thread'}}})
- elif m=='turn/start':
-  send({'id':i,'result':{'turn':{'id':'test-turn'}}})
-  send({'id':700,'method':'item/commandExecution/requestApproval','params':{'command':'write hello.txt','reason':'fixture approval','threadId':'test-thread','turnId':'test-turn','itemId':'cmd'}})
- elif m=='turn/interrupt':
-  send({'id':i,'result':{}})
-  send({'method':'turn/completed','params':{'turn':{'status':'interrupted','id':'test-turn'}}})
- elif i==700 and 'result' in r:
-  if r['result']['decision'] not in ['accept','acceptForSession']: continue
-  pathlib.Path('hello.txt').write_text('changed\n');pathlib.Path('added.txt').write_text('new\n')
-  send({'method':'item/agentMessage/delta','params':{'itemId':'msg','delta':'Done'}})
-  send({'method':'turn/completed','params':{'turn':{'status':'completed','id':'test-turn'}}})
-"#).unwrap();
-    std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let script = r#"#!/usr/bin/env node
+const send=v=>process.stdout.write(JSON.stringify(v)+'\n');let seq=0,active='';
+require('node:readline').createInterface({input:process.stdin}).on('line',line=>{
+ const r=JSON.parse(line),m=r.method,p=r.params||{};
+ if(m==='initialize')send({id:r.id,result:{userAgent:'fixture'}});
+ else if(m==='thread/start'||m==='thread/resume')send({id:r.id,result:{thread:{id:'test-thread'}}});
+ else if(m==='turn/start'){
+  active='test-turn-'+(++seq);send({id:r.id,result:{turn:{id:active}}});
+  if(p.input[0].text.includes('不执行验证')){
+   const report={state:'unverified',verificationRequired:false,summary:'Fixture needs no extra verification',steps:[]};
+   send({method:'item/completed',params:{item:{id:'plan',type:'agentMessage',text:JSON.stringify(report)}}});
+   send({method:'turn/completed',params:{turn:{id:active,status:'completed'}}});
+  }else send({id:700,method:'item/commandExecution/requestApproval',params:{command:'write hello.txt',reason:'fixture approval',threadId:'test-thread',turnId:active,itemId:'cmd'}});
+ }else if(m==='turn/interrupt'){
+  send({id:r.id,result:{}});
+  send({method:'turn/completed',params:{turn:{id:p.turnId,status:'interrupted'}}});
+ }else if(r.id===700&&r.result&&['accept','acceptForSession'].includes(r.result.decision)){
+  require('node:fs').writeFileSync('hello.txt','changed\n');require('node:fs').writeFileSync('added.txt','new\n');
+  send({method:'item/agentMessage/delta',params:{itemId:'msg',delta:'Done'}});
+  send({method:'turn/completed',params:{turn:{id:active,status:'completed'}}});
+ }
+});
+"#;
+    #[cfg(windows)]
+    let cli = {
+        let js = root.path().join("node_modules/@openai/codex/bin/codex.js");
+        std::fs::create_dir_all(js.parent().unwrap()).unwrap();
+        std::fs::write(js, script).unwrap();
+        let cli = root.path().join("fixture.cmd");
+        std::fs::write(&cli, "@echo off").unwrap();
+        cli
+    };
+    #[cfg(unix)]
+    let cli = {
+        use std::os::unix::fs::PermissionsExt;
+        let cli = root.path().join("codex-fixture");
+        std::fs::write(&cli, script).unwrap();
+        std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o700)).unwrap();
+        cli
+    };
     let data = root.path().join("data");
     let initial = json!({"prefs":{},"products":[],"tasks":[{"id":"bug-1","no":1,"kind":"bug","title":"Fix","product":"P","description":[],"run":empty_run()}]});
     Storage::new(&data).save(&initial).unwrap();
