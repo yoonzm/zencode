@@ -189,7 +189,12 @@ mod tests {
         for repo in &entries { assert!(diff.contains(&format!("+++ b/{}/same.txt",text(repo,"path")))); }
         assert!(!diff.contains("secret.txt"));
         let path = runtime.call("workdirTarget",json!({"id":"story-7","repo":"team/api"})).await.unwrap();
-        assert!(text(&entries[1],"worktree").replace('\\',"/").ends_with(&path.as_str().unwrap().replace('\\',"/")));
+        // Windows runners can expose TEMP via an 8.3 alias while the API
+        // returns its canonical path. Compare directory identities, not text.
+        assert_eq!(
+            PathBuf::from(text(&entries[1],"worktree")).canonicalize().unwrap(),
+            PathBuf::from(path.as_str().unwrap()).canonicalize().unwrap(),
+        );
         let editor = runtime.call("workdirTarget",json!({"id":"story-7","editor":true})).await.unwrap();
         let workspace: Value = serde_json::from_slice(&std::fs::read(editor.as_str().unwrap()).unwrap()).unwrap();
         assert_eq!(workspace["folders"].as_array().unwrap().len(),2);
