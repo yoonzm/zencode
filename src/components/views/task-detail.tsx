@@ -290,7 +290,7 @@ export function TaskDetail({ id, onBack }: { id: string; onBack?: () => void }) 
         {tab === "zentao" && <ZentaoTab task={task} />}
       </div>
 
-      {tab !== "zentao" && tab !== "verify" && !run.cleaned && <Composer task={task} />}
+      {!run.cleaned && <div hidden={tab === "zentao" || tab === "verify"} className="shrink-0"><Composer task={task} active={tab !== "zentao" && tab !== "verify"} /></div>}
     </article>
   );
 }

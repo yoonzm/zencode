@@ -9,7 +9,7 @@ import { ContextUsage } from "./context-usage";
 import { BeamFrame } from "@/components/magic/effects";
 import { ImagePreviews, useImagePaste } from "@/components/ui/image-paste";
 
-export function Composer({ task }: { task: ZTask }) {
+export function Composer({ task, active = true }: { task: ZTask; active?: boolean }) {
   const [text, setText] = useState("");
   const [ref, setRef] = useState<string | undefined>();
   const pasted = useImagePaste(task.id);
@@ -19,6 +19,7 @@ export function Composer({ task }: { task: ZTask }) {
   const area = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const prefill = useApp((s) => s.prefill);
+  const appliedPrefill = useRef<typeof prefill>(null);
   const state = task.run.state;
   const idle = state === "idle";
 
@@ -33,10 +34,11 @@ export function Composer({ task }: { task: ZTask }) {
 
   // 从 Diff 引用代码位置
   useEffect(() => {
-    if (!prefill) return;
+    if (!prefill || !active || prefill === appliedPrefill.current) return;
+    appliedPrefill.current = prefill;
     setRef(prefill.ref);
     area.current?.focus();
-  }, [prefill?.nonce]);
+  }, [prefill?.nonce, active]);
 
   // 自动增高
   useEffect(() => {
@@ -44,7 +46,7 @@ export function Composer({ task }: { task: ZTask }) {
     if (!el) return;
     el.style.height = "auto";
     el.style.height = Math.min(160, el.scrollHeight) + "px";
-  }, [text]);
+  }, [text, active]);
 
   const send = async () => {
     if (sendLock.current || pasted.reading) return;
@@ -73,7 +75,7 @@ export function Composer({ task }: { task: ZTask }) {
 
   // Esc：停止当前任务（没有打开弹窗和面板时）
   useEffect(() => {
-    if (state !== "running" && state !== "waiting") return;
+    if (!active || (state !== "running" && state !== "waiting")) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
       if (store.get().paletteOpen || store.get().confirm || document.querySelector('[role="dialog"], [role="menu"]')) return;
@@ -81,7 +83,7 @@ export function Composer({ task }: { task: ZTask }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [state, task.id]);
+  }, [state, task.id, active]);
 
   return (
     <div className="shrink-0 bg-background px-4 pb-3 pt-3 [padding-bottom:max(0.75rem,env(safe-area-inset-bottom))]">

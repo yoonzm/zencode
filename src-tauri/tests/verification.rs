@@ -60,6 +60,23 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
    send({method:'thread/tokenUsage/updated',params:{threadId:'fixture',turnId:id,tokenUsage:{...tokenUsage,last:{totalTokens:-1}}}});
   }
   const plan=prompt.includes('不执行验证');
+  if(!plan && prompt.includes('实时验证进度：') && require('node:fs').readFileSync('policies.log','utf8').includes('live-progress-fixture')) {
+   const fs=require('node:fs');
+   const path=JSON.parse(prompt.match(/本轮专用进度文件为 (.+?)。/)[1]);
+   fs.mkdirSync(require('node:path').dirname(path),{recursive:true});
+   const snapshot=status=>({target:'http://127.0.0.1:9000/check',where:'local',summary:'live '+status,steps:[{id:'0',status,note:status==='passed'?'HTTP 200':'opening page'}]});
+   fs.writeFileSync(path,JSON.stringify(snapshot('running')));
+   const timer=setInterval(()=>{
+    if(fs.existsSync('progress-advance'))fs.writeFileSync(path,JSON.stringify(snapshot('passed')));
+    if(!fs.existsSync('progress-finish'))return;
+    clearInterval(timer);
+    const malformed=prompt.includes('missing-final');
+    const result={state:'passed',summary:'final report',target:'http://127.0.0.1:9000/final',steps:[{id:'0',title:'Check fixture',expect:'ok',status:'passed',note:'HTTP 200'}]};
+    send({method:'item/completed',params:{item:{id:'msg-'+seq,type:'agentMessage',text:malformed?'invalid final':JSON.stringify(result)}}});
+    send({method:'turn/completed',params:{turn:{id,status:'completed'}}});
+   },100);
+   return;
+  }
   if(plan && require('node:fs').readFileSync('policies.log','utf8').includes('no-extra-verification')) {
    send({method:'item/completed',params:{item:{id:'msg-'+seq,type:'agentMessage',text:JSON.stringify({state:'unverified',verificationRequired:false,summary:'Only documentation changed; no extra verification needed',steps:[]})}}});
    send({method:'turn/completed',params:{turn:{id,status:'completed'}}}); return;
@@ -287,4 +304,36 @@ async fn context_usage_updates_across_phases_and_survives_restart() {
     let restored=Runtime::new(dir.path().join("data"),Arc::new(|_,_| {})).unwrap();
     assert_eq!(restored.data.lock().await["tasks"][0]["run"]["contextUsage"],task["run"]["contextUsage"]);
     restored.shutdown().await;
+}
+
+#[tokio::test]
+async fn progress_streams_while_turn_is_running_and_final_report_remains_authoritative() {
+    for missing_final in [false,true] {
+        let (dir,rt,mut config)=fixture().await;
+        config["mappings"][0]["projectPrompt"]=json!(if missing_final {"live-progress-fixture missing-final"} else {"live-progress-fixture"});
+        rt.call("start",json!({"id":"bug-1","config":config})).await.unwrap();
+        for expected in ["running","passed"] {
+            tokio::time::timeout(std::time::Duration::from_secs(15),async {
+                loop {
+                    let task=rt.data.lock().await["tasks"][0].clone();
+                    assert_ne!(task["run"]["state"],"failed","{task}");
+                    let verify=&task["run"]["verify"];
+                    if verify["steps"][0]["status"]==expected {
+                        assert_eq!(verify["state"],"running");
+                        assert_eq!(task["run"]["state"],"running");
+                        assert_eq!(verify["target"],"http://127.0.0.1:9000/check");
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                }
+            }).await.unwrap();
+            std::fs::write(dir.path().join("repo/progress-advance"),"").unwrap();
+        }
+        std::fs::write(dir.path().join("repo/progress-finish"),"").unwrap();
+        let task=wait(&rt,"review").await;
+        assert_eq!(task["run"]["verify"]["steps"][0]["status"],"passed");
+        assert_eq!(task["run"]["verify"]["state"],if missing_final {"unverified"} else {"passed"});
+        assert_eq!(task["run"]["verify"]["target"],if missing_final {"http://127.0.0.1:9000/check"} else {"http://127.0.0.1:9000/final"});
+        rt.shutdown().await;
+    }
 }

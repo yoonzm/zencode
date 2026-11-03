@@ -75,8 +75,7 @@ impl Runtime {
                 if ["running", "queued", "waiting"].contains(&text(&t["run"], "state")) {
                     t["run"]["state"] = json!("failed");
                     if t["run"]["verify"].is_object() {
-                        t["run"]["verify"]["state"] = json!("unverified");
-                        t["run"]["verify"]["summary"] = json!("应用退出中断了验证，请重新执行。");
+                        crate::verification::interrupt(&mut t["run"]["verify"], "应用退出中断了验证，请重新执行。");
                     }
                     push_event(
                         t,
@@ -169,6 +168,16 @@ impl Runtime {
             .and_then(|ts| ts.iter().find(|t| text(t, "id") == id))
             .cloned()
             .ok_or("任务不存在".into())
+    }
+    async fn verification_progress(&self, id: &str, cwd: &std::path::Path, path: &std::path::Path, last: &mut Value) -> Result<()> {
+        let Some(snapshot) = crate::verification::read_progress(cwd, path) else { return Ok(()); };
+        if snapshot == *last { return Ok(()); }
+        *last = snapshot.clone();
+        let mut verify = self.task(id).await?["run"]["verify"].clone();
+        if crate::verification::apply_progress(&mut verify, &snapshot) {
+            self.update(id, |t| t["run"]["verify"] = verify).await?;
+        }
+        Ok(())
     }
     async fn event(&self, id: &str, ev: Value) -> Result<()> {
         self.update(id, |t| {
@@ -813,8 +822,7 @@ impl Runtime {
                         .update(&id, |t| {
                             t["run"]["state"] = json!(if paused { "paused" } else { "failed" });
                             if t["run"]["verify"].is_object() {
-                                t["run"]["verify"]["state"] = json!("unverified");
-                                t["run"]["verify"]["summary"] = json!(e);
+                                crate::verification::interrupt(&mut t["run"]["verify"], &e);
                             }
                             push_event(t, json!({"kind":if paused{"system"}else{"error"},"text":e}));
                         })
@@ -943,7 +951,18 @@ impl Runtime {
                 )
                 .await?;
         }
-        while let Some(m) = messages.recv().await {
+        let mut progress_path = cwd.join(".verification").join(format!("progress-{}.json", Uuid::new_v4()));
+        let mut progress_tick = tokio::time::interval(std::time::Duration::from_millis(500));
+        progress_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut last_progress = Value::Null;
+        loop {
+            let m = tokio::select! {
+                message = messages.recv() => match message { Some(message) => message, None => break },
+                _ = progress_tick.tick(), if phase == "running" => {
+                    self.verification_progress(id, &cwd, &progress_path, &mut last_progress).await?;
+                    continue;
+                }
+            };
             let method = text(&m, "method");
             let p = &m["params"];
             if m.get("id").is_some() {
@@ -992,7 +1011,17 @@ impl Runtime {
                         continue;
                     }
                     if phase == "running" {
-                        let report = crate::verification::report(&response_text, false, json!(verify_logs));
+                        self.verification_progress(id, &cwd, &progress_path, &mut last_progress).await?;
+                        let mut report = crate::verification::report(&response_text, false, json!(verify_logs));
+                        if text(&report,"state") == "unverified" && report["steps"].as_array().is_some_and(|steps| steps.is_empty()) {
+                            // Preserve observed progress when the final response is absent/invalid.
+                            let current = self.task(id).await?["run"]["verify"].clone();
+                            report["steps"] = current["steps"].clone();
+                            if text(&report,"target").is_empty() { report["target"] = current["target"].clone(); }
+                            report["where"] = current["where"].clone();
+                            let reason = text(&report,"summary").to_owned();
+                            crate::verification::interrupt(&mut report, &reason);
+                        }
                         self.update(id, |t| t["run"]["verify"] = report).await?;
                         break;
                     }
@@ -1003,7 +1032,10 @@ impl Runtime {
                         if !valid { break; }
 
                         phase = "running";
+                        progress_path = cwd.join(".verification").join(format!("progress-{}.json", Uuid::new_v4()));
+                        last_progress = Value::Null;
                         prompt = crate::verification::prompt(phase, instructions, &report);
+                        prompt.push_str(&crate::verification::progress_prompt(&progress_path));
                         self.update(id, |t| {
                             t["run"]["state"] = json!("running");
                             t["run"]["verify"]["state"] = json!("running");
@@ -1430,6 +1462,41 @@ async fn stage_business_changes(cwd: &std::path::Path, base: &str) -> Result<()>
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn verification_snapshots_publish_steps_before_final_report_and_deduplicate() {
+        let root=tempfile::tempdir().unwrap();
+        let mut run=services::empty_run();
+        run["state"]=json!("running");
+        run["verify"]=json!({"state":"running","steps":[{"id":"0","title":"test","expect":"ok","status":"pending"}],"logs":[]});
+        Storage::new(root.path()).save(&json!({"prefs":{},"tasks":[{"id":"bug-1","run":run}]})).unwrap();
+        let emitted=Arc::new(std::sync::Mutex::new(Vec::new()));
+        let output=emitted.clone();
+        let rt=Runtime::new(root.path().into(),Arc::new(move |name,task| {
+            if name=="desktop:task" { output.lock().unwrap().push(task); }
+        })).unwrap();
+        rt.update("bug-1", |task| task["run"]["verify"]["state"]=json!("running")).await.unwrap();
+        emitted.lock().unwrap().clear();
+        let path=root.path().join("progress-current.json");
+        let mut last=Value::Null;
+        std::fs::write(&path,json!({"target":"http://127.0.0.1:9000/","steps":[{"id":"0","status":"running","note":"opening page"}]}).to_string()).unwrap();
+        rt.verification_progress("bug-1",root.path(),&path,&mut last).await.unwrap();
+        rt.verification_progress("bug-1",root.path(),&path,&mut last).await.unwrap();
+        assert_eq!(emitted.lock().unwrap().len(),1);
+        assert_eq!(emitted.lock().unwrap()[0]["run"]["verify"]["steps"][0]["status"],"running");
+        std::fs::write(&path,"{").unwrap();
+        rt.verification_progress("bug-1",root.path(),&path,&mut last).await.unwrap();
+        assert_eq!(emitted.lock().unwrap().len(),1);
+        std::fs::write(&path,json!({"steps":[{"id":"0","status":"passed","note":"HTTP 200"}]}).to_string()).unwrap();
+        rt.verification_progress("bug-1",root.path(),&path,&mut last).await.unwrap();
+        let saved=Storage::new(root.path()).load().unwrap();
+        assert_eq!(saved["tasks"][0]["run"]["verify"]["steps"][0]["status"],"passed");
+        assert_eq!(saved["tasks"][0]["run"]["verify"]["state"],"running");
+        assert_eq!(emitted.lock().unwrap().len(),2);
+        rt.update("bug-1",|task| task["run"]["verify"]["state"]=json!("passed")).await.unwrap();
+        std::fs::write(&path,json!({"steps":[{"id":"0","status":"running"}]}).to_string()).unwrap();
+        rt.verification_progress("bug-1",root.path(),&path,&mut last).await.unwrap();
+        assert_eq!(emitted.lock().unwrap().len(),3);
+    }
     #[test]
     fn mr_draft_follows_setting_instead_of_verification_state() {
         for state in [Value::Null, json!("passed"), json!("unverified"), json!("failed")] {

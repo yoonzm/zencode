@@ -34,6 +34,8 @@ function StepIcon({ s }: { s: VerifyStep["status"] }) {
   return <Circle className="size-4 text-subtle-foreground" />;
 }
 
+const STEP_LABEL: Record<VerifyStep["status"], string> = { pending: "待执行", running: "执行中", passed: "通过", failed: "失败" };
+
 function Progress({ v }: { v: Verify }) {
   const cur = PHASES.findIndex((p) => p.key.includes(v.state));
   return (
@@ -98,12 +100,13 @@ export function VerifyTab({ task }: { task: ZTask }) {
         {v.steps.length > 0 && (
           <section className="space-y-2">
             <h3 className="text-sm font-semibold">测试计划{v.goal ? <span className="ml-2 font-normal text-muted-foreground">{v.goal}</span> : null}</h3>
+            <p role="status" className="text-xs text-muted-foreground">已完成 {v.steps.filter(s => s.status === "passed" || s.status === "failed").length}/{v.steps.length} · 通过 {v.steps.filter(s => s.status === "passed").length} · 失败 {v.steps.filter(s => s.status === "failed").length}{busy && task.run.activity ? ` · ${task.run.activity}` : ""}</p>
             <ol className="divide-y divide-border rounded-lg border border-border">
               {v.steps.map((s) => (
                 <li key={s.id} className="flex gap-3 px-3.5 py-2.5">
                   <span className="mt-0.5"><StepIcon s={s.status} /></span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm text-foreground">{s.title}</p>
+                    <p className="flex flex-wrap items-baseline gap-x-2 text-sm text-foreground">{s.title}<span className={cn("text-xs", s.status === "running" ? "text-accent" : s.status === "failed" ? "text-danger" : s.status === "passed" ? "text-success" : "text-muted-foreground")}>{STEP_LABEL[s.status]}</span></p>
                     <p className="text-xs text-muted-foreground">预期：{s.expect}</p>
                     {s.note && <p className={cn("mt-1 text-xs", s.status === "failed" ? "text-danger" : "text-muted-foreground")}>{s.note}</p>}
                   </div>

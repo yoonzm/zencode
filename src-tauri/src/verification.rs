@@ -39,6 +39,57 @@ pub fn empty(state: &str, summary: &str) -> Value {
     json!({"state":state,"mode":"checks","where":"local","checks":[],"steps":[],"logs":[],"summary":summary})
 }
 
+pub fn progress_prompt(path: &std::path::Path) -> String {
+    format!("\n实时验证进度：本轮专用进度文件为 {}。开始验证前创建目录和文件；每个步骤开始前、断言完成或失败后，立即原子写入完整 JSON 快照（先写同目录临时文件再替换），长步骤在取得中间结果时也更新 note。步骤 id 必须沿用已有计划，不能重编号。格式：{{\"target\":\"当前实际验证地址，未知留空\",\"where\":\"local|server\",\"summary\":\"当前正在做什么\",\"steps\":[{{\"id\":\"计划中的原 id\",\"status\":\"pending|running|passed|failed\",\"note\":\"当前进展或实际断言证据\"}}]}}。未执行不得标 passed，passed/failed 必须给出实际证据 note；开始时标 running，结束时标 passed/failed。让测试脚本在步骤之间直接写入此文件，不能等整条长命令结束才上报。确定或变更地址后立即更新 target。进度快照不替代最终 JSON 报告，最终报告仍按要求输出。", serde_json::to_string(path).unwrap_or_default())
+}
+
+/// A missing, incomplete or oversized snapshot must not interrupt the actual test.
+pub fn read_progress(cwd: &std::path::Path, path: &std::path::Path) -> Option<Value> {
+    use std::io::Read;
+    let canonical = path.canonicalize().ok()?;
+    if !canonical.starts_with(cwd.canonicalize().ok()?) { return None; }
+    let mut bytes = Vec::new();
+    std::fs::File::open(canonical).ok()?.take(65_537).read_to_end(&mut bytes).ok()?;
+    if bytes.len() > 65_536 { return None; }
+    serde_json::from_slice(&bytes).ok()
+}
+
+/// Progress can update known steps, but only the final report can finish verification.
+pub fn apply_progress(verify: &mut Value, snapshot: &Value) -> bool {
+    if text(verify, "state") != "running" || !snapshot.is_object() { return false; }
+    let before = verify.clone();
+    for key in ["target", "summary"] {
+        if let Some(value) = snapshot[key].as_str().filter(|v| !v.trim().is_empty()) {
+            verify[key] = json!(value);
+        }
+    }
+    if ["local", "server"].contains(&text(snapshot, "where")) { verify["where"] = snapshot["where"].clone(); }
+    if let Some(steps) = verify["steps"].as_array_mut() {
+        for update in snapshot["steps"].as_array().into_iter().flatten() {
+            let Some(id) = update["id"].as_str() else { continue; };
+            let Some(step) = steps.iter_mut().find(|s| text(s, "id") == id) else { continue; };
+            let status = text(update, "status");
+            if !["pending", "running", "passed", "failed"].contains(&status) { continue; }
+            if ["passed", "failed"].contains(&status) && text(update, "note").trim().is_empty() { continue; }
+            step["status"] = json!(status);
+            if update["note"].is_string() { step["note"] = update["note"].clone(); }
+        }
+    }
+    *verify != before
+}
+
+pub fn interrupt(verify: &mut Value, reason: &str) {
+    verify["state"] = json!("unverified");
+    verify["summary"] = json!(reason);
+    verify["finishedAt"] = json!(now());
+    for step in verify["steps"].as_array_mut().into_iter().flatten() {
+        if text(step, "status") == "running" {
+            step["status"] = json!("pending");
+            step["note"] = json!(format!("执行已中断：{reason}"));
+        }
+    }
+}
+
 pub fn prompt(phase: &str, instructions: &str, plan: &Value) -> String {
     let screenshot_policy = "截图默认精简：只保留能证明关键断言、最终结果或失败现场的真实截图；相同页面和状态不重复截图，不为每次点击、输入、加载或中间步骤截图。通常保留 1–3 张关键截图即可；多个独立失败或用户明确要求时按需增加，不得为了数量限制遗漏关键失败证据。计划阶段也应按此原则安排截图。";
     let action = if phase == "planning" {
@@ -95,6 +146,42 @@ pub fn mr_note(run: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn progress_updates_only_known_steps_with_evidence_and_never_finishes_run() {
+        let mut verify = json!({"state":"running","target":"","summary":"start","steps":[{"id":"0","title":"check","expect":"ok","status":"pending"},{"id":"1","title":"next","expect":"ok","status":"pending"}]});
+        assert!(apply_progress(&mut verify, &json!({"state":"passed","target":"http://localhost:9000/","where":"local","steps":[{"id":"0","status":"running","note":"page loading"},{"id":"fake","status":"passed","note":"fake"}]})));
+        assert_eq!(verify["state"],"running");
+        assert_eq!(verify["steps"][0]["status"],"running");
+        assert_eq!(verify["steps"].as_array().unwrap().len(),2);
+        assert!(!apply_progress(&mut verify,&json!({"steps":[{"id":"0","status":"passed"},{"id":"1","status":"invalid","note":"bad"}]})));
+        let result=json!({"summary":"first assertion passed","steps":[{"id":"0","status":"passed","note":"HTTP 200"},{"id":"1","status":"running","note":"checking UI"}]});
+        assert!(apply_progress(&mut verify,&result));
+        assert!(!apply_progress(&mut verify,&result));
+        interrupt(&mut verify,"cancelled");
+        assert_eq!(verify["state"],"unverified");
+        assert_eq!(verify["steps"][0]["status"],"passed");
+        assert_eq!(verify["steps"][1]["status"],"pending");
+        assert!(!apply_progress(&mut verify,&result));
+    }
+
+    #[test]
+    fn progress_reader_handles_partial_oversized_and_outside_files() {
+        let root=tempfile::tempdir().unwrap();
+        let path=root.path().join("progress.json");
+        assert!(read_progress(root.path(),&path).is_none());
+        for contents in ["{", &" ".repeat(65_537)] {
+            std::fs::write(&path,contents).unwrap();
+            assert!(read_progress(root.path(),&path).is_none());
+        }
+        std::fs::write(&path,r#"{"steps":[]}"#).unwrap();
+        assert_eq!(read_progress(root.path(),&path).unwrap(),json!({"steps":[]}));
+        let outside=tempfile::tempdir().unwrap();
+        assert!(read_progress(outside.path(),&path).is_none());
+        let prompt=progress_prompt(&path);
+        assert!(prompt.contains("每个步骤开始前"));
+        assert!(prompt.contains("不能等整条长命令结束"));
+        assert!(prompt.contains("不能重编号"));
+    }
     #[test]
     fn project_prompt_compatibility_and_product_scope() {
         let config = json!({"mappings":[
