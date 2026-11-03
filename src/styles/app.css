@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "yet-another-react-lightbox/styles.css";
 @import "@heroui/styles/components/chip.css";
 @import "@heroui/styles/components/avatar.css";
 
@@ -285,3 +286,18 @@ html[data-platform="win"] *::-webkit-scrollbar-thumb { border-width: 2px; border
   --warning-foreground: #fff;
   --danger-foreground: #fff;
 }
+
+/* Shared image viewer: keep controls readable over screenshots. */
+.image-preview { --yarl__color_backdrop: rgba(0, 0, 0, .94); }
+.image-preview-scale { align-self: center; min-width: 3.5em; text-align: right; font-size: 13px; color: white; font-variant-numeric: tabular-nums; }
+.image-preview-fit { font-size: 13px; white-space: nowrap; }
+.image-preview-caption { position: absolute; bottom: 16px; left: 16px; right: 16px; display: flex; justify-content: center; align-items: center; gap: 12px; color: white; font-size: 13px; pointer-events: none; }
+.image-preview-caption > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+.image-preview-caption > span:last-child { flex-shrink: 0; }
+.image-preview-caption strong { flex-shrink: 0; border-radius: 4px; background: #b52c39; padding: 2px 6px; }
+.image-preview-status { max-width: 80vw; text-align: center; color: white; overflow-wrap: anywhere; }
+@media (max-width: 480px) { .image-preview-caption { flex-wrap: wrap; gap: 6px; } .image-preview .yarl__toolbar { gap: 0; } }
+
+.image-preview .yarl__toolbar { background: rgba(24, 24, 24, .88); border-radius: 0 0 0 12px; }
+.image-preview .yarl__navigation_prev, .image-preview .yarl__navigation_next { background: rgba(24, 24, 24, .8); border-radius: 12px; padding: 12px; }
+.image-preview-caption { width: fit-content; max-width: calc(100% - 32px); margin: auto; background: rgba(24, 24, 24, .88); border-radius: 8px; padding: 8px 12px; }

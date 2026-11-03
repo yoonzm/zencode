@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Shot } from "@/data/types";
 import { desktopCall } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Dialog as DialogPrimitive } from "radix-ui";
-import { ChevronLeft, ChevronRight, X } from "@/lib/icons";
+import { ImagePreview } from "@/components/ui/image-preview";
+import { ChevronRight } from "@/lib/icons";
 
-function ShotFrame({ id, shot, big }: { id: string; shot: Shot; big?: boolean }) {
+function ShotFrame({ id, shot }: { id: string; shot: Shot }) {
   const [src, setSrc] = useState<string>();
   const [error, setError] = useState("");
   useEffect(() => {
@@ -18,14 +18,12 @@ function ShotFrame({ id, shot, big }: { id: string; shot: Shot; big?: boolean })
     );
     return () => { active = false; };
   }, [id, shot.path]);
-  return (
-    <div className={cn("relative overflow-hidden rounded-md border bg-background", shot.failed ? "border-danger/70" : "border-border", big ? "flex min-h-0 items-center justify-center" : "size-full")}>
-      {error ? <p role="status" className={cn("text-xs text-danger", big ? "p-3" : "p-1")} title={error}>{big ? `截图无法预览：${error}` : "加载失败"}</p> : src ?
-        <img src={src} alt={shot.label} onError={() => setError("文件损坏或格式不支持")} className={cn("w-full object-contain", big ? "max-h-[calc(100dvh-12rem)]" : "h-full")} /> :
-        <p role="status" className={cn("text-xs text-muted-foreground", big ? "p-3" : "p-1")}>{big ? "正在加载截图…" : "加载中"}</p>}
-      {shot.failed && (big ? <span className="absolute right-2 top-2 rounded bg-danger px-1.5 text-xs font-medium text-white">未达预期</span> : <span className="absolute bottom-0.5 right-0.5 size-2 rounded-full bg-danger" />)}
-    </div>
-  );
+  return <div className={cn("relative size-full overflow-hidden rounded-md border bg-background", shot.failed ? "border-danger/70" : "border-border")}>
+    {error ? <p role="status" className="p-1 text-xs text-danger" title={error}>加载失败</p> : src ?
+      <img src={src} alt={shot.label} onError={() => setError("文件损坏或格式不支持")} className="size-full object-contain" /> :
+      <p role="status" className="p-1 text-xs text-muted-foreground">加载中</p>}
+    {shot.failed && <span className="absolute bottom-0.5 right-0.5 size-2 rounded-full bg-danger" />}
+  </div>;
 }
 
 export function VerificationShots({ id }: { id: string }) {
@@ -34,7 +32,7 @@ export function VerificationShots({ id }: { id: string }) {
   const [loading, setLoading] = useState(true);
   const [retry, setRetry] = useState(0);
   const [cur, setCur] = useState<number | null>(null);
-  const trigger = useRef<HTMLButtonElement | null>(null);
+  const images = useMemo(() => shots.map(shot => ({ id: `${id}:${shot.path}`, label: shot.label, failed: shot.failed, load: () => desktopCall("verificationShot", { id, path: shot.path }) })), [id, shots]);
   useEffect(() => {
     let active = true;
     setLoading(true); setError(""); setShots([]); setCur(null);
@@ -44,17 +42,7 @@ export function VerificationShots({ id }: { id: string }) {
     ).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [id, retry]);
-  const go = (d: number) => setCur(c => c == null || !shots.length ? null : (c + d + shots.length) % shots.length);
-  useEffect(() => {
-    if (cur == null) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); go(e.key === "ArrowLeft" ? -1 : 1); }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [cur, shots.length]);
   if (!loading && !error && !shots.length) return null;
-  const selected = cur == null ? undefined : shots[cur];
   const stack = shots.slice(0, 4);
   const failedN = shots.filter(shot => shot.failed).length;
   const firstFail = shots.findIndex(shot => shot.failed);
@@ -63,7 +51,6 @@ export function VerificationShots({ id }: { id: string }) {
       {loading && <p role="status" className="text-xs text-muted-foreground">正在读取截图…</p>}
       {error && <div role="status" className="text-xs text-danger">{error}<Button variant="ghost" size="sm" onClick={() => setRetry(x => x + 1)}>重试</Button></div>}
       {shots.length > 0 && <button
-        ref={trigger}
         type="button"
         aria-label={`查看 ${shots.length} 张截图${failedN ? `，${failedN} 张未达预期` : ""}`}
         onClick={() => setCur(firstFail >= 0 ? firstFail : 0)}
@@ -81,33 +68,7 @@ export function VerificationShots({ id }: { id: string }) {
         </span>
         <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none" />
       </button>}
-      <DialogPrimitive.Root open={cur != null} onOpenChange={open => !open && setCur(null)}>
-        <DialogPrimitive.Portal>
-          <DialogPrimitive.Overlay className="fixed inset-0 z-[80] bg-black/92" />
-          <DialogPrimitive.Content
-            aria-describedby={undefined}
-            onCloseAutoFocus={e => { e.preventDefault(); trigger.current?.focus(); }}
-            onClick={e => e.target === e.currentTarget && setCur(null)}
-            className="fixed inset-0 z-[81] flex flex-col items-center justify-center gap-5 px-4 py-6 outline-none sm:px-16"
-          >
-            <DialogPrimitive.Title className="sr-only">{selected?.label ?? "截图"}</DialogPrimitive.Title>
-            <DialogPrimitive.Close aria-label="关闭" className="absolute right-4 top-4 grid size-10 place-items-center rounded-full border border-white/25 text-white/85 outline-none transition-colors hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/60">
-              <X className="size-5" />
-            </DialogPrimitive.Close>
-            {selected && <>
-              <p className={cn("max-w-[min(1200px,100%)] truncate text-sm", selected.failed ? "text-danger" : "text-white/75")} title={selected.label}>{selected.label}</p>
-              <div className="min-h-0 w-[min(1200px,100%)]">
-                <ShotFrame key={selected.id} id={id} shot={selected} big />
-              </div>
-              <div className="flex shrink-0 items-center gap-4 text-white/85">
-                <button type="button" aria-label="上一张" onClick={() => go(-1)} disabled={shots.length < 2} className="grid size-10 place-items-center rounded-full outline-none hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/60 disabled:opacity-30"><ChevronLeft className="size-5" /></button>
-                <span aria-live="polite" className="min-w-28 text-center text-sm tabular-nums">第 {(cur ?? 0) + 1} 张，共 {shots.length} 张</span>
-                <button type="button" aria-label="下一张" onClick={() => go(1)} disabled={shots.length < 2} className="grid size-10 place-items-center rounded-full outline-none hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/60 disabled:opacity-30"><ChevronRight className="size-5" /></button>
-              </div>
-            </>}
-          </DialogPrimitive.Content>
-        </DialogPrimitive.Portal>
-      </DialogPrimitive.Root>
+      <ImagePreview images={images} index={cur} onIndexChange={setCur} onClose={() => setCur(null)} title="验证截图" />
     </section>
   );
 }

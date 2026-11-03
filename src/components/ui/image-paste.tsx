@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type ClipboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
 import { X } from "@/lib/icons";
-import { Modal } from "./dialog";
+import { ImagePreview } from "./image-preview";
 
 const LIMIT = 4;
 const MAX_SIZE = 5 * 1024 * 1024;
@@ -65,12 +65,13 @@ export function useImagePaste(scope: string | boolean) {
 }
 
 export function ImagePreviews({ images, remove, disabled }: { images: string[]; remove?: (index: number) => void; disabled?: boolean }) {
-  const [preview, setPreview] = useState<string | null>(null);
+  const [preview, setPreview] = useState<number | null>(null);
+  const slides = useMemo(() => images.map((src, i) => ({ id: `attachment-${i}`, src, label: `附加图片 ${i + 1}` })), [images]);
   if (!images.length) return null;
   return <><ul aria-label="附加图片" className="flex flex-wrap gap-2">
     {images.map((url, i) => <li key={i} className="relative rounded-lg border border-border bg-muted p-1">
-      <button type="button" onClick={() => setPreview(url)} aria-label={`查看图片 ${i + 1}`} className="block rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring/60"><img src={url} alt={`附加图片 ${i + 1}`} className="size-20 rounded-md object-contain" /></button>
+      <button type="button" onClick={() => setPreview(i)} aria-label={`查看图片 ${i + 1}`} className="block rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring/60"><img src={url} alt={`附加图片 ${i + 1}`} className="size-20 rounded-md object-contain" /></button>
       {remove && <button type="button" disabled={disabled} onClick={() => remove(i)} aria-label={`移除图片 ${i + 1}`} className="absolute -right-1 -top-1 grid size-6 place-items-center rounded-full border border-border bg-card text-foreground shadow-sm outline-none hover:bg-hover focus-visible:ring-2 focus-visible:ring-ring/60 disabled:opacity-50"><X className="size-3.5" /></button>}
     </li>)}
-  </ul><Modal open={preview !== null} onClose={() => setPreview(null)} title="图片预览" size="lg" className="sm:max-w-4xl">{preview && <img src={preview} alt="附加图片预览" className="mx-auto max-h-[75vh] max-w-full object-contain" />}</Modal></>;
+  </ul><ImagePreview images={slides} index={preview} onIndexChange={setPreview} onClose={() => setPreview(null)} /></>;
 }

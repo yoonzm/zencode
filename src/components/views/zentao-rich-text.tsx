@@ -2,30 +2,31 @@ import { createElement, useEffect, useMemo, useState, type ReactNode } from "rea
 import { desktopCall } from "@/lib/desktop";
 import { store, useApp } from "@/store/state";
 import { openExternal } from "@/store/actions";
-import { Modal } from "@/components/ui/dialog";
+import { ImagePreview } from "@/components/ui/image-preview";
 
 function ZentaoImage({ taskId, source, alt }: { taskId: string; source: string; alt: string }) {
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
-  const [preview, setPreview] = useState(false);
+  const [preview, setPreview] = useState<number | null>(null);
   useEffect(() => {
     let active = true;
-    setUrl(""); setError(""); setPreview(false);
+    setUrl(""); setError(""); setPreview(null);
     void desktopCall("zentaoImage", { id: taskId, src: source, config: store.get().config }).then(result => {
       if (typeof result !== "string" || !/^data:image\/(png|jpeg|gif|webp);base64,/.test(result)) throw new Error("图片响应无效");
       if (active) setUrl(result);
     }).catch(error => { if (active) setError(String(error instanceof Error ? error.message : error)); });
     return () => { active = false; };
   }, [taskId, source, attempt]);
+  const images = useMemo(() => [{ id: `${taskId}:${source}`, src: url, label: alt }], [taskId, source, url, alt]);
   return <span className="my-2 block min-w-0 max-w-full">
     {error ? <span className="block rounded-md border border-border bg-muted/40 p-2 text-xs">
       <span role="alert" className="block break-words text-danger">图片加载失败：{error}</span>
       <button type="button" onClick={() => setAttempt(n => n + 1)} className="mt-1 rounded-sm text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/60">重试图片</button>
-    </span> : url ? <button type="button" onClick={() => setPreview(true)} aria-label={`放大图片：${alt}`} className="block max-w-full rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring/60">
+    </span> : url ? <button type="button" onClick={() => setPreview(0)} aria-label={`放大图片：${alt}`} className="block max-w-full rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring/60">
       <img src={url} alt={alt} onError={() => setError("图片内容无法显示")} className="max-h-80 max-w-full rounded-md border border-border object-contain" />
     </button> : <span role="status" className="grid min-h-20 place-items-center rounded-md border border-border bg-muted/40 px-3 text-xs text-muted-foreground">正在加载图片…</span>}
-    <Modal open={preview} onClose={() => setPreview(false)} title="禅道图片" size="lg" className="sm:max-w-4xl">{url && <img src={url} alt={alt} className="mx-auto max-h-[75vh] max-w-full object-contain" />}</Modal>
+    <ImagePreview images={images} index={preview} onIndexChange={setPreview} onClose={() => setPreview(null)} title="禅道图片" />
   </span>;
 }
 
