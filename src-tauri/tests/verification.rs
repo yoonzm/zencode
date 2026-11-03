@@ -22,7 +22,7 @@ async fn fixture() -> (tempfile::TempDir, Arc<Runtime>, Value) {
     let script = r#"#!/usr/bin/env node
 const readline = require('node:readline');
 const send = v => process.stdout.write(JSON.stringify(v)+'\n');
-let seq=0;
+let seq=0, interruptMode='';
 readline.createInterface({input:process.stdin}).on('line',line=>{
  const r=JSON.parse(line), m=r.method, p=r.params;
  if(m==='initialize') send({id:r.id,result:{}});
@@ -43,6 +43,11 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   require('node:fs').appendFileSync('prompts.log',JSON.stringify(prompt)+'\n');
   require('node:fs').appendFileSync('inputs.log',JSON.stringify(p.input)+'\n');
   send({id:r.id,result:{turn:{id}}});
+  if(prompt.startsWith('interrupt-race-')) {
+   interruptMode=prompt.split('\n')[0].slice('interrupt-race-'.length);
+   send({method:'item/agentMessage/delta',params:{itemId:'ready',delta:'interrupt-ready'}});
+   return;
+  }
   if(require('node:fs').existsSync('live-diff.txt')) return;
   if(prompt.startsWith('live-diff-')) {
    require('node:fs').writeFileSync('live-diff.txt','visible before review\n');
@@ -86,6 +91,11 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   send({method:'turn/completed',params:{turn:{id,status:'completed'}}});
  }
  if(m==='turn/interrupt') {
+  if(interruptMode) {
+   if(interruptMode==='completed') send({method:'turn/completed',params:{turn:{id:p.turnId,status:'completed'}}});
+   send({id:r.id,error:{code:-32600,message:interruptMode==='error'?'fixture interrupt failure':'no active turn to interrupt'}});
+   return;
+  }
   send({id:r.id,result:{}});
   send({method:'turn/completed',params:{turn:{id:p.turnId,status:'interrupted'}}});
  }
@@ -120,6 +130,39 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
     let rt = Runtime::new(root, Arc::new(|_,_| {})).unwrap();
     let config = json!({"codex":{"cliPath":cli,"effort":"ultra","model":"fixture-model"},"mappings":[{"product":"P","repos":[{"repo":"team/app","branch":"main"}],"verify":{"enabled":true,"prompt":"Check fixture"}}]});
     (dir,rt,config)
+}
+
+#[tokio::test]
+async fn pause_handles_completion_race_and_missing_completion_event() {
+    for mode in ["completed", "missing", "error"] {
+        let (_dir, rt, config) = fixture().await;
+        rt.call("start", json!({"id":"bug-1","config":config,"instruction":format!("interrupt-race-{mode}")})).await.unwrap();
+        let task = wait(&rt, "running").await;
+        let repo = std::path::Path::new(task["run"]["worktree"].as_str().unwrap());
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            while !rt.data.lock().await["tasks"][0]["run"]["events"].as_array().unwrap().iter().any(|e| e["text"] == "interrupt-ready") {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        }).await.unwrap();
+        // Keep an actual edit and a queued follow-up to verify cancellation
+        // preserves work without launching the next turn.
+        std::fs::write(repo.join("retained.txt"), "keep this edit\n").unwrap();
+        rt.call("start", json!({"id":"bug-1","config":config,"instruction":"must not start"})).await.unwrap();
+        let result = rt.call("pause", json!({"id":"bug-1"})).await;
+        if mode == "error" {
+            assert_eq!(result.unwrap_err(), "fixture interrupt failure");
+            rt.shutdown().await;
+            wait(&rt, "paused").await;
+            continue;
+        }
+        result.unwrap();
+        let paused = wait(&rt, "paused").await;
+        assert_eq!(std::fs::read_to_string(repo.join("retained.txt")).unwrap(), "keep this edit\n");
+        assert!(paused["run"]["rawDiff"].as_str().unwrap().contains("+keep this edit"));
+        assert_eq!(std::fs::read_to_string(repo.join("prompts.log")).unwrap().lines().count(), 1);
+        assert!(!paused["run"]["events"].as_array().unwrap().iter().any(|e| e["kind"] == "error"));
+        rt.shutdown().await;
+    }
 }
 
 #[tokio::test]

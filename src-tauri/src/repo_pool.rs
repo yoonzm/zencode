@@ -1,16 +1,50 @@
 use super::*;
 use std::path::Path;
 
+#[derive(Default)]
+pub(super) struct PoolState {
+    #[cfg(windows)]
+    configured: bool,
+    fetched: HashMap<String, tokio::time::Instant>,
+    #[cfg(test)]
+    pub(super) fetches: usize,
+}
+
 impl Runtime {
-    async fn repository_lock(&self, pool: &Path) -> Arc<Mutex<()>> {
-        self.repository_locks.lock().await.entry(pool.to_path_buf()).or_insert_with(|| Arc::new(Mutex::new(()))).clone()
+    async fn repository_lock(&self, pool: &Path) -> Arc<Mutex<PoolState>> {
+        let key = pool.canonicalize().unwrap_or_else(|_|pool.to_path_buf());
+        self.repository_locks.lock().await.entry(key).or_insert_with(|| Arc::new(Mutex::new(PoolState::default()))).clone()
+    }
+
+    #[cfg(windows)]
+    async fn configure_pool(pool: &Path, state: &mut PoolState, job: &Job) -> Result<()> {
+        if !state.configured {
+            let cancel = Some((&job.stopped, &job.paused));
+            let value = services::repository_command(&["config","--local","--get","core.longpaths"],Some(pool),cancel).await;
+            if value.as_deref() != Ok("true") {
+                services::repository_command(&["config","--local","core.longpaths","true"],Some(pool),cancel).await?;
+            }
+            state.configured = true;
+        }
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    pub(super) async fn configure_worktree(&self, cwd: &Path, job: &Job) -> Result<()> {
+        let common = services::repository_command(&["rev-parse","--git-common-dir"],Some(cwd),Some((&job.stopped,&job.paused))).await?;
+        let pool = cwd.join(common);
+        let lock = self.repository_lock(&pool).await;
+        let mut state = lock.lock().await;
+        Self::configure_pool(&pool, &mut state, job).await
     }
 
     pub(super) async fn add_repository_worktree(&self, id: &str, repository: &str, remote: &str, target: &str, branch: &str, cwd: &Path, job: &Job) -> Result<String> {
         // Include the server in the identity; equal project paths on different hosts must not share data.
         let pool = self.root.join("repository-pool").join(crate::workspace::directory(&format!("{remote}#{repository}")));
+        std::fs::create_dir_all(&pool).map_err(|e|e.to_string())?;
+        let requested = tokio::time::Instant::now();
         let lock = self.repository_lock(&pool).await;
-        let _guard = loop {
+        let mut state = loop {
             tokio::select! {
                 guard = lock.lock() => break guard,
                 _ = tokio::time::sleep(std::time::Duration::from_millis(200)) => {
@@ -18,13 +52,16 @@ impl Runtime {
                 }
             }
         };
+        let _checkout = tokio::select! {
+            slot = self.checkout_slots.acquire() => slot.map_err(|e| e.to_string())?,
+            _ = job.cancel_queue.notified() => return Err("执行已取消，工作区保留".into()),
+        };
         let cancel = Some((&job.stopped, &job.paused));
         if !pool.join("HEAD").exists() {
-            std::fs::create_dir_all(&pool).map_err(|e|e.to_string())?;
             services::repository_command(&["init","--bare"],Some(&pool),cancel).await?;
         }
         #[cfg(windows)]
-        services::repository_command(&["config","--local","core.longpaths","true"],Some(&pool),cancel).await?;
+        Self::configure_pool(&pool, &mut state, job).await?;
         if services::repository_command(&["remote","get-url","origin"],Some(&pool),cancel).await.is_err() {
             services::repository_command(&["remote","add","origin",remote],Some(&pool),cancel).await?;
         }
@@ -38,7 +75,14 @@ impl Runtime {
             self.event(id,json!({"kind":"system","text":format!("正在更新仓库池目标分支：{target}（首次下载完整历史，后续增量更新）")})).await?;
             let reference = format!("refs/remotes/origin/{target}");
             let refspec = format!("+refs/heads/{target}:{reference}");
-            services::repository_command(&["fetch","--no-tags","--progress","origin",&refspec],Some(&pool),cancel).await?;
+            // Requests that overlapped this fetch can reuse its result. A later
+            // task still fetches, so upstream changes are never hidden by a TTL.
+            if !state.fetched.get(target).is_some_and(|finished| *finished >= requested) {
+                services::repository_command(&["fetch","--no-tags","--progress","origin",&refspec],Some(&pool),cancel).await?;
+                state.fetched.insert(target.to_owned(), tokio::time::Instant::now());
+                #[cfg(test)]
+                { state.fetches += 1; }
+            }
             let base = services::repository_command(&["rev-parse","--verify",&format!("{reference}^{{commit}}")],Some(&pool),cancel).await?;
             self.update(id,|t|t["run"]["preparingRepository"] = json!({"worktree":cwd,"remote":remote,"branch":branch,"base":base})).await?;
             base

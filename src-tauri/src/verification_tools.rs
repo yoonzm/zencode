@@ -1,11 +1,13 @@
 use crate::{codex::Session, services::{self, command}, text, verification, Result};
 use serde_json::{json, Value};
 use std::{collections::HashMap, path::Path, sync::Arc, time::Duration};
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::{Mutex, Notify, Semaphore};
 use uuid::Uuid;
 
-#[derive(Default)]
-pub struct Tools { jobs: Mutex<HashMap<String, Arc<Job>>> }
+pub struct Tools { jobs: Mutex<HashMap<String, Arc<Job>>>, slots: Arc<Semaphore> }
+impl Default for Tools {
+    fn default() -> Self { Self::with_slots(Arc::new(Semaphore::new(1))) }
+}
 struct Job {
     state: Mutex<Value>,
     cancel: Notify,
@@ -35,6 +37,7 @@ impl Job {
     }
 }
 impl Tools {
+    pub(crate) fn with_slots(slots: Arc<Semaphore>) -> Self { Self { jobs: Mutex::new(HashMap::new()), slots } }
     pub async fn call(&self, op: &str, args: &Value, root: &Path) -> Result<Value> {
         if op == "verificationToolStart" {
             let mode = text(args,"mode");
@@ -53,13 +56,21 @@ impl Tools {
             jobs.insert(id.clone(),job.clone());
             let cwd = root.join("verification-tools").join(&id);
             let args = args.clone();
+            let slots = self.slots.clone();
             tokio::spawn(async move {
+                let mut permit = None;
                 let result = tokio::select! {
                     _ = job.cancel.notified() => Err("已取消".to_string()),
-                    result = tokio::time::timeout(Duration::from_secs(1800), run(&job,&args,&cwd)) => result.unwrap_or_else(|_| Err("操作超过 30 分钟，已停止，请检查环境后重试".into())),
+                    result = async {
+                        job.progress("等待验证资源").await;
+                        permit = Some(slots.acquire_owned().await.map_err(|e| e.to_string())?);
+                        job.progress("正在准备仓库").await;
+                        tokio::time::timeout(Duration::from_secs(1800), run(&job,&args,&cwd)).await.unwrap_or_else(|_| Err("操作超过 30 分钟，已停止，请检查环境后重试".into()))
+                    } => result,
                 };
                 job.progress("正在关闭会话并清理临时目录").await;
                 if let Some(session) = job.session.lock().await.take() { session.close().await; }
+                drop(permit);
                 // cwd is generated below the application's verification-tools directory, never supplied by the caller.
                 if cwd.exists() {
                     if let Err(e) = tokio::fs::remove_dir_all(&cwd).await { job.log("cli",&format!("临时目录清理失败：{e}"),true).await; }

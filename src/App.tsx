@@ -15,11 +15,11 @@ export function App() {
   useEffect(() => {
     const error = (message: string) => toast({ title: "桌面服务错误", desc: message, tone: "danger", duration: 8000 });
     hydrate().then(() => {
-      store.set({ tasks: store.get().tasks.map(decodeTask) });
+      store.set({ tasks: store.get().tasks.map(t => decodeTask(t)) });
       if (!store.get().setupDone && !location.hash) navigate({ name: "setup" });
       void initUpdates().catch(e => error(e.message));
     }).catch(e => error(e.message));
-    const offTask = window.desktop?.onTask(task => store.set(s => ({ tasks: s.tasks.map(t => t.id === task.id ? decodeTask(task) : t) })));
+    const offTask = window.desktop?.onTask(task => store.set(s => ({ tasks: s.tasks.map(t => t.id === task.id ? decodeTask(task, t) : t) })));
     const offError = window.desktop?.onError(error);
     const onError = (e: Event) => error((e as CustomEvent).detail);
     window.addEventListener("desktop-error", onError);

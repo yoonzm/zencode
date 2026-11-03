@@ -25,7 +25,7 @@ impl Runtime {
             if job.stopped.load(Ordering::SeqCst) || job.paused.load(Ordering::SeqCst) { return Err("执行已取消，工作区保留".into()); }
             if let Some(repo) = repositories.iter().find(|r| r["mapping"]["repo"] == link["repo"]) {
                 #[cfg(windows)]
-                services::repository_command(&["config","--local","core.longpaths","true"],Some(&PathBuf::from(text(repo,"worktree"))),Some((&job.stopped,&job.paused))).await?;
+                self.configure_worktree(&PathBuf::from(text(repo,"worktree")), job).await?;
                 #[cfg(not(windows))]
                 let _ = repo;
                 continue;
@@ -59,7 +59,7 @@ impl Runtime {
             // Resume a worktree interrupted before its metadata was saved, without overwriting changes.
             if !cwd.join(".git").is_file() { return Err("任务仓库必须使用仓库池 worktree".into()); }
             #[cfg(windows)]
-            services::repository_command(&["config","--local","core.longpaths","true"],Some(&cwd),Some((&job.stopped,&job.paused))).await?;
+            self.configure_worktree(&cwd, job).await?;
             let actual = command("git", &["remote","get-url","origin"],Some(&cwd)).await?;
             if actual != remote { return Err("未完成初始化的仓库 origin 与配置不一致".into()); }
             let current = command("git", &["symbolic-ref","--short","HEAD"],Some(&cwd)).await?;
@@ -222,12 +222,18 @@ mod tests {
         let a_job = Arc::new(Job::new()); let b_job = Arc::new(Job::new());
         let (a,b) = tokio::join!(runtime.prepare_workspace("a",&config,&mapping,&a_job),runtime.prepare_workspace("b",&config,&mapping,&b_job));
         a.unwrap(); b.unwrap();
+        let pool_lock = runtime.repository_locks.lock().await.values().next().unwrap().clone();
+        assert_eq!(pool_lock.lock().await.fetches, 1, "overlapping requests share a fetch");
         assert_eq!(std::fs::read_dir(root.path().join("repository-pool")).unwrap().count(),1);
         let a = runtime.task("a").await.unwrap(); let b = runtime.task("b").await.unwrap();
         let a_path = PathBuf::from(text(&a["run"],"worktree")); let b_path = PathBuf::from(text(&b["run"],"worktree"));
         assert!(a_path.join(".git").is_file()); assert!(b_path.join(".git").is_file());
         let common = command("git",&["rev-parse","--git-common-dir"],Some(&a_path)).await.unwrap();
         assert_eq!(common,command("git",&["rev-parse","--git-common-dir"],Some(&b_path)).await.unwrap());
+        let config_file = a_path.join(&common).join("config");
+        let config_modified = std::fs::metadata(&config_file).unwrap().modified().unwrap();
+        runtime.prepare_workspace("b",&config,&mapping,&b_job).await.unwrap();
+        assert_eq!(std::fs::metadata(&config_file).unwrap().modified().unwrap(), config_modified, "resume does not rewrite shared Git configuration");
         assert!(runtime.remove_repository_worktrees(std::path::Path::new(""),&a_path).await.is_err());
         assert!(a_path.join(".git").is_file()); assert!(b_path.join(".git").is_file());
         std::fs::write(a_path.join("same.txt"),"task A\n").unwrap();
@@ -238,6 +244,7 @@ mod tests {
         std::fs::write(source.path().join("same.txt"),"updated upstream\n").unwrap();
         command("git",&["commit","-am","upstream update"],Some(source.path())).await.unwrap();
         runtime.prepare_workspace("c",&config,&mapping,&Arc::new(Job::new())).await.unwrap();
+        assert_eq!(pool_lock.lock().await.fetches, 2, "later tasks must see fresh upstream commits");
         let c = runtime.task("c").await.unwrap(); let c_path = PathBuf::from(text(&c["run"],"worktree"));
         assert_ne!(c["run"]["base"],original_base);
         assert_eq!(std::fs::read_to_string(c_path.join("same.txt")).unwrap().replace("\r\n","\n"),"updated upstream\n");

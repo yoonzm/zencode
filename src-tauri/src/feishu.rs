@@ -35,6 +35,21 @@ pub fn test_card() -> Value {
     card("测试消息", "blue", vec![("状态", "飞书通知连接成功".into())])
 }
 
+fn changed_file_count(run: &Value) -> usize {
+    let business_file = |path: &str| !path.trim_matches('"').split('/').any(|part| part == ".verification");
+    if let Some(raw) = run["rawDiff"].as_str() {
+        if !raw.starts_with("diff --git ") { return 0; }
+        return raw.split("\ndiff --git ").filter(|patch| {
+            let path = patch.lines().find_map(|line| line.strip_prefix("+++ b/").or_else(|| line.strip_prefix("--- a/")).or_else(|| line.strip_prefix("rename to ")))
+                .or_else(|| patch.lines().next().and_then(|header| header.rsplit_once(" b/").map(|(_, path)| path)));
+            // Binary and quoted-name patches can lack +++/--- paths. Each
+            // diff --git section still represents one changed file.
+            path.is_none_or(business_file)
+        }).count();
+    }
+    run["files"].as_array().map_or(0, |files| files.iter().filter(|file| business_file(text(file,"path"))).count())
+}
+
 // Only transitions generate messages; streaming output and diff refreshes do not.
 pub fn transition(old: &Value, task: &Value, prefs: &Value) -> Option<Value> {
     if prefs["enabled"].as_bool() != Some(true) { return None; }
@@ -59,7 +74,7 @@ pub fn transition(old: &Value, task: &Value, prefs: &Value) -> Option<Value> {
         ("产品", text(task,"product").to_owned()),
     ];
     if state == "review" || state == "failed" {
-        lines.push(("改动", format!("{} 个文件", run["files"].as_array().map_or(0, Vec::len))));
+        lines.push(("改动", format!("{} 个文件", changed_file_count(run))));
     }
     if state == "done" || (state == "completed" && !run["mr"].is_null()) {
         lines.push(("分支", text(run,"branch").to_owned()));
@@ -98,6 +113,32 @@ pub async fn send(prefs: &Value, mut body: Value) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn notification_counts_backend_git_changes_without_frontend_files() {
+        let patch = concat!(
+            "diff --git a/app.ts b/app.ts\n--- a/app.ts\n+++ b/app.ts\n@@ -1 +1 @@\n-old\n+PRIVATE_CODE\n",
+            "diff --git a/new file.txt b/new file.txt\nnew file mode 100644\n--- /dev/null\n+++ b/new file.txt\n",
+            "diff --git a/deleted.txt b/deleted.txt\ndeleted file mode 100644\n--- a/deleted.txt\n+++ /dev/null\n",
+            "diff --git a/old.ts b/renamed.ts\nsimilarity index 100%\nrename from old.ts\nrename to renamed.ts\n",
+            "diff --git a/logo.png b/logo.png\nBinary files a/logo.png and b/logo.png differ\n",
+            "diff --git a/.zencode-repos/r-123/页面.ts b/.zencode-repos/r-123/页面.ts\n--- a/.zencode-repos/r-123/页面.ts\n+++ b/.zencode-repos/r-123/页面.ts\n",
+            "diff --git a/.verification/log.json b/.verification/log.json\n--- /dev/null\n+++ b/.verification/log.json\n",
+        );
+        let mut task = json!({"no":7,"kind":"story","title":"Example","run":{"state":"review","rawDiff":patch,"files":[],"verify":{"state":"passed"}}});
+        let old = json!({"run":{"state":"running"}});
+        let prefs = json!({"enabled":true});
+        for state in ["review", "failed"] {
+            task["run"]["state"] = json!(state);
+            let card = transition(&old, &task, &prefs).unwrap().to_string();
+            assert!(card.contains("改动：6 个文件"), "{card}");
+            assert!(!card.contains("PRIVATE_CODE"));
+        }
+        task["run"]["rawDiff"] = json!("");
+        task["run"]["files"] = json!([{"path":"stale.ts"}]);
+        assert_eq!(changed_file_count(&task["run"]), 0, "empty current diffs override stale frontend data");
+        task["run"].as_object_mut().unwrap().remove("rawDiff");
+        assert_eq!(changed_file_count(&task["run"]), 1, "old tasks still support saved file lists");
+    }
     #[test]
     fn signature_matches_independent_hmac_fixture() {
         assert_eq!(signature("example-secret", 1700000000), "Gs3YRutIJpVN2FvEXKXHU6bEj2pVdSriQ0niig9EbUk=");

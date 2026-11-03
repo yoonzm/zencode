@@ -39,6 +39,12 @@ npm run package
 - Before MR submission, all effective `origin` push URLs are checked against the project's GitLab-provided SSH or HTTP clone URL. SSH and HTTP API ports are independent; a separate or additional `pushurl` must still match the project.
 - MR failure remains reviewable. Successful MR submission completes the local run without writing comments, links, status or fix versions to ZenTao. ZenTao status remains read-only and comes from synchronization. Legacy pending runs retain their MR open/copy actions and can finish submission without creating another MR.
 
+## Local workload and persistence
+
+Task concurrency controls coding sessions. Repository checkout and background diff scans each have one shared slot; command/file events coalesce into scans at most once every two seconds per task, with a fresh scan at turn boundaries. Scans are polled alongside Codex events so waiting for disk capacity does not block message handling. Verification planning/execution and verification-tool drafts/trials share one slot; waiting tasks can still be paused or deleted. Windows Git/Codex launchers use below-normal process priority. Existing external dev/watch services are not managed by this limit.
+
+Streaming messages are combined for UI updates every 100 ms and checkpointed about every two seconds. Lifecycle transitions still save immediately. Routine state snapshots are saved on blocking workers without holding the shared task-state lock; revision ordering prevents delayed snapshots from overwriting newer transactional saves. Shutdown waits for task workers to flush their remaining output. Unexpected termination can lose output since the last checkpoint, but task worktree files remain on disk. Feishu changed-file totals come from backend Git patches, including added/deleted/renamed/binary files, with legacy file-list fallback only when no patch is available.
+
 ## Installers and validation limits
 
 The `Desktop installers` GitHub Actions workflow builds Windows x64 NSIS `.exe`, macOS Apple Silicon `.dmg`, and macOS Intel `.dmg`. Artifacts are private workflow downloads, not public releases. Signing/notarization credentials are not configured.

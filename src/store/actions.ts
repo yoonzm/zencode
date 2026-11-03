@@ -61,7 +61,7 @@ export async function sync(opts: { auto?: boolean } = {}) {
   store.set({ syncing: true, lastSyncAttempt: Date.now(), syncError: undefined, ...(!opts.auto && store.get().tasks.length === 0 ? { listStatus: "loading" as const } : {}) });
   try {
     const tasks = await desktopCall("sync", { config: store.get().config });
-    if (revision === taskRevision) store.set({ tasks: tasks.map(decodeTask), lastSync: Date.now(), listStatus: tasks.length ? "ready" : "empty" });
+    if (revision === taskRevision) store.set({ tasks: tasks.map((t: ZTask) => decodeTask(t)), lastSync: Date.now(), listStatus: tasks.length ? "ready" : "empty" });
   }
   catch (e) {
     if (!opts.auto) report(e);
@@ -78,7 +78,7 @@ async function cleanup(mode: "auto" | "done" | "clear", products: string[] | "al
   taskRevision++;
   try {
     const result = await desktopCall("cleanup", { mode, products, days });
-    if (result.count || mode !== "auto") store.set({ tasks: result.tasks.map(decodeTask), listStatus: result.tasks.length ? "ready" : "empty" });
+    if (result.count || mode !== "auto") store.set({ tasks: result.tasks.map((t: ZTask) => decodeTask(t)), listStatus: result.tasks.length ? "ready" : "empty" });
     if (location.hash.startsWith("#task-") && !result.tasks.some((t: ZTask) => `#task-${t.id}` === location.hash)) navigate({ name: "tasks" });
     if (result.count || mode !== "auto") toast({ title: result.count ? `已清理 ${result.count} 个任务的数据` : "没有可清理的数据", tone: "success" });
     return true;
@@ -154,9 +154,10 @@ export function mergeMr(id: string) {
 }
 export function createMr(id: string) { return runCall("mr", { id }); }
 export function openExternal(url: string) { void desktopCall("open", { url }).catch(report); }
-export function decodeTask(t: ZTask): ZTask {
+export function decodeTask(t: ZTask, previous?: ZTask): ZTask {
   if ((t.run.state as string) === "paused") t.run.state = "stopped";
   const raw = (t.run as any).rawDiff as string | undefined;
+  if (raw != null && previous && raw === (previous.run as any).rawDiff && JSON.stringify((t.run as any).manualFiles) === JSON.stringify((previous.run as any).manualFiles)) { t.run.files = previous.run.files; return t; }
   if (raw != null) t.run.files = raw.split(/^diff --git /m).slice(1).map(part => {
     const lines = part.split("\n");
     const plus = lines.find(l => l.startsWith("+++ b/"));
@@ -213,6 +214,6 @@ export async function importManual(cands: import("@/data/parse").Candidate[], so
   await flushPrefs();
   const made: ZTask[] = await desktopCall("importManual", { candidates: cands, source });
   taskRevision++;
-  store.set(s => ({ tasks: [...made.map(decodeTask), ...s.tasks.filter(t => !made.some(m => m.id === t.id))], listStatus: "ready", importOpen: false }));
+  store.set(s => ({ tasks: [...made.map(t => decodeTask(t)), ...s.tasks.filter(t => !made.some(m => m.id === t.id))], listStatus: "ready", importOpen: false }));
   toast({ title: `已导入 ${made.length} 个任务`, desc: "在待处理里，需要你手动交给 Codex", tone: "success" });
 }

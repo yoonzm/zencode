@@ -2,15 +2,18 @@ use crate::Result;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 pub struct Storage {
     path: PathBuf,
-    lock: Mutex<()>,
+    lock: Mutex<u64>,
+    revision: AtomicU64,
 }
 impl Storage {
     pub fn new(root: &Path) -> Self {
         Self {
             path: root.join("state.json"),
-            lock: Mutex::new(()),
+            lock: Mutex::new(0),
+            revision: AtomicU64::new(0),
         }
     }
     pub fn load(&self) -> Result<Value> {
@@ -25,7 +28,15 @@ impl Storage {
         serde_json::from_slice(&data).map_err(|e| format!("本地状态损坏；原文件未覆盖：{e}"))
     }
     pub fn save(&self, value: &Value) -> Result<()> {
-        let _guard = self.lock.lock().map_err(|e| e.to_string())?;
+        self.save_revision(value, self.reserve_revision())
+    }
+    pub(crate) fn reserve_revision(&self) -> u64 {
+        self.revision.fetch_add(1, Ordering::SeqCst) + 1
+    }
+    pub(crate) fn save_revision(&self, value: &Value, revision: u64) -> Result<()> {
+        let mut saved = self.lock.lock().map_err(|e| e.to_string())?;
+        // An async snapshot may reach disk after a newer transactional save.
+        if revision <= *saved { return Ok(()); }
         let parent = self.path.parent().ok_or("无效存储路径")?;
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         let tmp = self.path.with_extension("tmp");
@@ -50,7 +61,9 @@ impl Storage {
         if self.path.exists() {
             std::fs::remove_file(&self.path).map_err(|e| e.to_string())?;
         }
-        std::fs::rename(tmp, &self.path).map_err(|e| e.to_string())
+        std::fs::rename(tmp, &self.path).map_err(|e| e.to_string())?;
+        *saved = revision;
+        Ok(())
     }
 }
 pub fn store_secrets(prefs: &Value) -> Result<Value> {
@@ -86,6 +99,22 @@ pub fn restore_secrets(prefs: &Value) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn async_snapshots_cannot_overwrite_newer_commits() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = Storage::new(dir.path());
+        let stale = storage.reserve_revision();
+        storage.save(&json!({"tasks":[{"id":"new"}]})).unwrap();
+        storage.save_revision(&json!({"tasks":[{"id":"old"}]}), stale).unwrap();
+        assert_eq!(storage.load().unwrap()["tasks"][0]["id"], "new");
+        // A failed newer write must not prevent retrying the same revision.
+        let next = storage.reserve_revision();
+        std::fs::create_dir(dir.path().join("state.tmp")).unwrap();
+        assert!(storage.save_revision(&json!({"tasks":[]}), next).is_err());
+        std::fs::remove_dir(dir.path().join("state.tmp")).unwrap();
+        storage.save_revision(&json!({"tasks":[]}), next).unwrap();
+        assert_eq!(storage.load().unwrap()["tasks"], json!([]));
+    }
     #[test]
     fn state_roundtrip() {
         let d = tempfile::tempdir().unwrap();

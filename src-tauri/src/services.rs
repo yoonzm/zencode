@@ -52,7 +52,8 @@ pub fn executable(file: &str, args: &[String]) -> Result<Command> {
             }
             let mut command = Command::new("node");
             command.arg(script).args(args);
-            command.creation_flags(0x08000000);
+            // Keep Git/Codex workloads below interactive desktop applications.
+            command.creation_flags(0x08000000 | 0x00004000);
             return Ok(command);
         }
     }
@@ -61,7 +62,7 @@ pub fn executable(file: &str, args: &[String]) -> Result<Command> {
     #[cfg(target_os = "macos")]
     command.env("PATH", mac_path);
     #[cfg(windows)]
-    command.creation_flags(0x08000000);
+    command.creation_flags(0x08000000 | 0x00004000);
     Ok(command)
 }
 pub async fn command(file: &str, args: &[&str], cwd: Option<&Path>) -> Result<String> {

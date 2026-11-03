@@ -123,6 +123,18 @@ impl Session {
             .await?;
         Ok(v)
     }
+    pub async fn interrupt(&self, thread: &Value, turn: &str) -> Result<()> {
+        match self.request("turn/interrupt", json!({"threadId":thread,"turnId":turn})).await {
+            Ok(_) => Ok(()),
+            // Completion can win the race with cancellation. Close this task's
+            // session as well so a missing completion event cannot leave it busy.
+            Err(e) if e == "no active turn to interrupt" => {
+                self.close().await;
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
+    }
     pub async fn close(&self) {
         let mut child = self.child.lock().await;
         if let Some(pid) = child.id() {
