@@ -1,4 +1,4 @@
-import { taskRef } from "@/lib/task";
+import { taskRef, zentaoTaskUrl } from "@/lib/task";
 import { openExternal } from "@/store/actions";
 import { motion } from "motion/react";
 import { useEffect } from "react";
@@ -196,7 +196,7 @@ export function TaskDetail({ id, onBack }: { id: string; onBack?: () => void }) 
           {task.manual && <span className="rounded-full bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">手动</span>}
           <div className="ml-auto flex items-center gap-0.5">
             {!task.manual && <Tip label="在禅道中打开">
-              <Button variant="ghost" size="icon-sm" aria-label="在禅道中打开" onClick={() => openExternal(`${store.get().config.zentao.baseUrl}/${task.kind}-view-${task.no}.html`)}>
+              <Button variant="ghost" size="icon-sm" aria-label="在禅道中打开" onClick={() => openExternal(zentaoTaskUrl(store.get().config.zentao.baseUrl, task))}>
                 <ExternalLink />
               </Button>
             </Tip>}
@@ -209,7 +209,7 @@ export function TaskDetail({ id, onBack }: { id: string; onBack?: () => void }) 
                 ...dirEntries,
                 ...(dirEntries.length ? [{ separator: true } as const] : []),
                 { label: "复制分支名", icon: GitBranch, disabled: !run.branch, onClick: () => run.branch && copyText(run.branch, "已复制分支名") },
-                ...(task.manual ? [] : [{ label: "复制禅道链接", icon: Link, onClick: () => copyText(`${store.get().config.zentao.baseUrl}/${task.kind}-view-${task.no}.html`, "已复制禅道链接") }]),
+                ...(task.manual ? [] : [{ label: "复制禅道链接", icon: Link, onClick: () => copyText(zentaoTaskUrl(store.get().config.zentao.baseUrl, task), "已复制禅道链接") }]),
                 { separator: true },
                 ...(run.state === "completed" ? [] : [{ label: "完成任务", icon: Check, onClick: () => completeTask(task.id) }]),
                 { label: "删除任务", icon: Trash, danger: true, onClick: () => deleteTask(task.id) },

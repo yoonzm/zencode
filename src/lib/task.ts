@@ -6,3 +6,6 @@ type Ref = Pick<ZTask, "kind" | "no"> & { manual?: boolean };
 export const taskNo = (t: Ref) => (t.manual ? `N${t.no}` : String(t.no));
 export const kindLabel = (t: Pick<ZTask, "kind">) => (t.kind === "bug" ? "Bug" : "需求");
 export const taskRef = (t: Ref) => (t.manual ? `${kindLabel(t)} ${taskNo(t)}` : `${kindLabel(t)} #${t.no}`);
+
+/** Preserve the deployment path so the browser sends the site's session cookie. */
+export const zentaoTaskUrl = (baseUrl: string, t: Ref) => `${baseUrl.trim().replace(/\/+$/, "")}/${t.kind}-view-${t.no}.html`;

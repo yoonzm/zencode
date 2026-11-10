@@ -309,10 +309,17 @@ async fn project_prompt_reaches_start_resume_and_verification_and_can_skip() {
         assert_eq!(task["run"]["verify"]["state"], if resume { "unverified" } else { "passed" });
         let policies = std::fs::read_to_string(dir.path().join("repo/policies.log")).unwrap();
         assert!(policies.contains(prompt));
+        assert!(policies.contains("不是本次验证环境或登录凭据"));
+        assert!(policies.contains("当前用户明确指定的验证环境优先"));
+        assert!(policies.contains("项目提示词明确要求保留供人工验证的服务时按要求保留"));
         assert!(!policies.contains("Check fixture"));
         let prompts: Vec<String> = std::fs::read_to_string(dir.path().join("repo/prompts.log")).unwrap().lines().map(|line| serde_json::from_str(line).unwrap()).collect();
         assert_eq!(prompts.len(), if resume { 2 } else { 3 });
         assert!(prompts[1].contains(prompt));
+        for verification_prompt in &prompts[1..] {
+            assert!(verification_prompt.contains("不是本次验证环境或登录凭据"));
+            assert!(verification_prompt.contains("历史计划不能覆盖当前要求"));
+        }
         if !resume { assert!(prompts[2].contains(prompt)); }
         else { assert_eq!(task["run"]["verify"]["verificationRequired"], false); }
         rt.shutdown().await;

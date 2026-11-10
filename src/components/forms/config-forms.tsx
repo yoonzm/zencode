@@ -85,7 +85,7 @@ function AdvancedTls({ checked, onChange, test }: { checked: boolean; onChange: 
 export function ZentaoForm({ value, onChange, test, onTest, onDemo }: { value: ZentaoConfig; onChange: (p: Partial<ZentaoConfig>) => void; test: ReturnType<typeof useConnTest>["state"]; onTest: () => void; onDemo?: () => void }) {
   return (
     <div className="space-y-5">
-      <Field label="服务地址" hint="禅道的访问地址，不含 /zentao 之外的路径。">
+      <Field label="服务地址" hint="填写浏览器中禅道的部署地址，保留 /zentao 等部署路径，例如 https://zentao.example.com/zentao；不含具体页面路径。">
         {({ id, describedBy }) => <Input id={id} aria-describedby={describedBy} value={value.baseUrl} onChange={(e: any) => onChange({ baseUrl: e.target.value, connected: false })} placeholder="https://zentao.example.com" inputMode="url" spellCheck={false} />}
       </Field>
       <div className="grid gap-5 sm:grid-cols-2">

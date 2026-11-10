@@ -32,8 +32,10 @@ pub fn instructions<'a>(config: &'a Value, task: &Value) -> &'a str {
 }
 
 pub fn project_context(instructions: &str) -> String {
-    format!("项目专有提示词（用户配置，适用于任务分析、开发、自检、验证和继续任务；按当前阶段选用相关约定，不要将开发操作带入只读或验证阶段。阶段限制、浏览器隔离和应用操作权限仍须遵守）：\n{instructions}")
+    format!("项目专有提示词（用户配置，适用于任务分析、开发、自检、验证和继续任务；按当前阶段选用相关约定，不要将开发操作带入只读或验证阶段。阶段限制、浏览器隔离和应用操作权限仍须遵守）：\n{instructions}\n{ENVIRONMENT_POLICY}")
 }
+
+pub const ENVIRONMENT_POLICY: &str = "环境信息来源规则：禅道 BUG/需求原文、重现步骤、截图、附件和历史备注中的 IP、URL、版本、镜像、部署方式及账号默认是缺陷发生时的历史复现资料，不是本次验证环境或登录凭据，不能据此部署、登录或切换验证目标。当前用户明确指定的验证环境优先，其次使用项目专有提示词明确配置的验证环境；备注优先用于理解补充需求和验收标准，不能自动覆盖验证环境。仅当用户明确要求在原复现环境验证时才使用该环境。缺少验证目标、候选环境无法按配置选择或要求存在歧义时，先向用户澄清并保持 unverified，不得自行回退到原文环境。计划中必须区分并写明本次部署/访问地址、接口代理后端、测试账号及各自的选择依据；未知项明确待确认，不猜测。项目提示词允许多个后端任选其一时，选择其中一个并记录，不能换成原文中的其他地址。执行前核对已有计划是否符合这些来源规则，历史计划不能覆盖当前要求。报告 target 写实际供用户访问的地址，summary/步骤 note 记录代理后端、使用的测试账号、必要的人工登录说明和环境选择依据；仅使用用户提供的测试凭据，不输出无关秘密。";
 
 pub fn empty(state: &str, summary: &str) -> Value {
     json!({"state":state,"mode":"checks","where":"local","checks":[],"steps":[],"logs":[],"summary":summary})
@@ -214,6 +216,17 @@ mod tests {
         let files: Vec<_> = std::fs::read_dir(root.path().join("verification-runtime")).unwrap().collect();
         assert_eq!(files.len(), 1);
         assert_eq!(std::fs::read_to_string(files[0].as_ref().unwrap().path()).unwrap(), include_str!("playwright-runtime.cjs"));
+    }
+    #[test]
+    fn environment_sources_apply_to_development_planning_and_execution() {
+        let instructions = "本地 nginx，后端从 https://test-a.example/ 或 https://test-b.example/ 任选其一";
+        for context in [project_context(instructions), prompt("planning", instructions, &json!({"target":"https://historical.example/"})), prompt("running", instructions, &json!({"target":"https://historical.example/"}))] {
+            assert!(context.contains(ENVIRONMENT_POLICY));
+            assert!(context.contains(instructions));
+            assert!(context.contains("不是本次验证环境或登录凭据"));
+            assert!(context.contains("历史计划不能覆盖当前要求"));
+            assert!(context.contains("本次部署/访问地址、接口代理后端、测试账号及各自的选择依据"));
+        }
     }
     #[test]
     fn every_verification_phase_requires_isolated_headless_browser() {
