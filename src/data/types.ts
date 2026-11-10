@@ -158,6 +158,8 @@ export interface ZentaoConfig {
   account: string;
   secret: string;
   scope: "mine" | "products";
+  /** 同步的禅道任务类型；旧配置缺省为两者都同步 */
+  syncKind?: "all" | TaskKind;
   /** 自动同步间隔（分钟，最小 1）；0 表示只手动同步 */
   syncIntervalMin: number;
   /** 同步到新任务后自动交给 Codex 执行（默认开启，缺省按开启处理） */

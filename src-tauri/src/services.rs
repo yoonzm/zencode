@@ -457,6 +457,10 @@ pub async fn sync(config: &Value) -> Result<(Vec<Value>, Vec<String>)> {
             continue;
         }
         for (kind, plural) in [("bug", "bugs"), ("story", "stories")] {
+            let sync_kind = text(&config["zentao"], "syncKind");
+            if ["bug", "story"].contains(&sync_kind) && kind != sync_kind {
+                continue;
+            }
             let mut route = format!("/products/{}/{plural}", product["id"]);
             if kind == "story" {
                 // Include stories in every ZenTao product branch of this mapped product.

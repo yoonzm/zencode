@@ -13,9 +13,36 @@ test('failed credential persistence does not retry on toast updates and supports
  assert.deepEqual(store.get().feishu,{enabled:false,webhook:'',secret:'',attention:true,result:true});
  assert.equal(store.get().config.zentao.syncIntervalMin,5);
  assert.equal(store.get().config.zentao.autoRun,true);
+ assert.equal(store.get().config.zentao.syncKind,'all');
  assert.deepEqual(store.get().config.mappings,[{id:'legacy',product:'P',projectPrompt:'',repos:[{id:'legacy-repo',repo:'team/app',branch:'develop',role:'',testCmd:'npm test'}]}]);
  assert.equal(store.get().config.zentao.baseUrl,'https://zentao.example');
- store.set({sidebarOpen:false});await assert.rejects(flushPrefs(),/Vault unavailable/);assert.equal(saves,1);assert.equal(savedPrefs.platformPref,undefined);assert.equal(savedPrefs.windowControls,undefined);
+ store.set(s=>({sidebarOpen:false,config:{...s.config,zentao:{...s.config.zentao,syncKind:'bug'}}}));await assert.rejects(flushPrefs(),/Vault unavailable/);assert.equal(saves,1);assert.equal(savedPrefs.platformPref,undefined);assert.equal(savedPrefs.windowControls,undefined);
+ assert.equal(savedPrefs.config.zentao.syncKind,'bug');
  store.set({toasts:[]});await new Promise(r=>setTimeout(r,10));assert.equal(saves,1);
  await assert.rejects(flushPrefs(),/Vault unavailable/);assert.equal(saves,2);
+});
+
+test('sync type survives saving and restarting for each selection', async () => {
+ const attrs=new Map();
+ globalThis.document={documentElement:{getAttribute:k=>attrs.get(k),setAttribute:(k,v)=>attrs.set(k,v),removeAttribute:k=>attrs.delete(k)}};
+ globalThis.localStorage={removeItem:()=>{}};
+ const result=await build({entryPoints:['src/store/state.ts'],bundle:true,write:false,format:'esm',platform:'browser',alias:{'@':`${process.cwd()}/src`},define:{'process.env.NODE_ENV':'"production"'}});
+ const url=`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`;
+ for (const syncKind of ['all','bug','story']) {
+  let saved={config:{zentao:{syncKind,scope:'mine'},gitlab:{},codex:{},mappings:[]}};
+  globalThis.window={desktop:{call:async(op,args)=>{
+   if(op==='load')return {platform:'win',prefs:structuredClone(saved),tasks:[]};
+   if(op==='save'){saved=structuredClone(args);return null;}
+  }},dispatchEvent:()=>true,matchMedia:()=>({matches:false})};
+  const first=await import(`${url}#${syncKind}`);
+  await first.hydrate();
+  assert.equal(first.store.get().config.zentao.syncKind,syncKind);
+  first.store.set(s=>({config:{...s.config,zentao:{...s.config.zentao,scope:'products'}}}));
+  await first.flushPrefs();
+  assert.equal(saved.config.zentao.syncKind,syncKind);
+  const restarted=await import(`${url}#${syncKind}-restart`);
+  await restarted.hydrate();
+  assert.equal(restarted.store.get().config.zentao.syncKind,syncKind);
+  assert.equal(restarted.store.get().config.zentao.scope,'products');
+ }
 });

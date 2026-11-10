@@ -221,6 +221,7 @@ export async function hydrate() {
   prefs.channel = prefs.channel === "beta" ? "beta" : "stable";
   const config = prefs.config ?? defaultPrefs.config;
   prefs.config = { ...config, codex: { ...defaultPrefs.config.codex, ...config.codex }, mappings: (config.mappings ?? []).map((m: any) => migrateProjectPrompt(m.repos ? m : ({ id: m.id, product: m.product, projectPrompt: m.projectPrompt, verify: m.verify, repos: [{ id: `${m.id}-repo`, repo: m.repo ?? "", branch: m.branch ?? "", role: "", testCmd: m.testCmd ?? "" }] }))), zentao: { ...config.zentao, syncIntervalMin: config.zentao?.syncIntervalMin ?? 5, autoRun: config.zentao?.autoRun ?? true } };
+  prefs.config.zentao.syncKind = ["bug", "story"].includes(config.zentao?.syncKind ?? "") ? config.zentao.syncKind : "all";
   const platform: Platform = data.platform === "mac" || data.platform === "win" ? data.platform : detectPlatform();
   store.set({ ...prefs, platform, tasks: data.tasks, listStatus: data.tasks.length ? "ready" : "empty", syncError: undefined });
   applyTheme(store.get().theme); applyPlatform(platform);

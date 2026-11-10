@@ -3,17 +3,17 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {build} from 'esbuild';
 
-test('TLS controls default to verification and show service-specific warnings and certificate guidance', async () => {
+test('service forms retain sync-type selection, TLS defaults and certificate guidance', async () => {
   const result = await build({
     stdin: {contents: `
       import React from 'react';
       import {renderToStaticMarkup} from 'react-dom/server';
       import {ZentaoForm, GitlabForm} from './src/components/forms/config-forms';
       import {DEFAULT_CONFIG} from './src/data/defaults';
-      export function render(kind, insecureTls, message) {
+      export function render(kind, insecureTls, message, syncKind) {
         const Form = kind === 'zentao' ? ZentaoForm : GitlabForm;
         return renderToStaticMarkup(<Form
-          value={{...DEFAULT_CONFIG[kind], insecureTls}}
+          value={{...DEFAULT_CONFIG[kind], insecureTls, ...(syncKind ? {syncKind} : {})}}
           onChange={() => {}} onTest={() => {}}
           test={{status: message ? 'error' : 'idle', steps: [], message}}
         />);
@@ -30,6 +30,12 @@ test('TLS controls default to verification and show service-specific warnings an
   });
   const module = {exports: {}};
   new Function('require', 'module', 'exports', result.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
+  for (const [kind, label] of [[undefined, 'BUG 和需求'], ['all', 'BUG 和需求'], ['bug', '只同步 BUG'], ['story', '只同步需求']]) {
+    const html = module.exports.render('zentao', false, undefined, kind);
+    const group = html.match(/<div[^>]*aria-label="同步类型"[\s\S]*?<\/div>/)?.[0];
+    assert.ok(group, 'Sync type selector must be visible');
+    assert.match(group, new RegExp(`<button[^>]*aria-checked="true"[^>]*>${label}</button>`));
+  }
   for (const kind of ['zentao', 'gitlab']) {
     const defaults = module.exports.render(kind);
     assert.match(defaults, /aria-expanded="false"/);

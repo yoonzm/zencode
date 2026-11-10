@@ -170,27 +170,33 @@ async fn sync_always_limits_products_and_applies_assignee_scope() {
         }
         (404, json!({}))
     })).await;
-    for scope in ["mine", "products"] {
-        for mapped in [true, false] {
-            calls.lock().unwrap().clear();
-            let config = json!({
-                "zentao":{"baseUrl":base,"auth":"token","secret":"fixture","account":"alice","scope":scope},
-                "mappings":if mapped {json!([{"product":"Mapped","repo":"team/app"}])} else {json!([])}
-            });
-            let (tasks, products) = sync(&config).await.unwrap();
-            assert_eq!(products, vec!["Mapped", "Unmapped"]);
-            assert_eq!(tasks.len(), if !mapped {0} else if scope == "mine" {2} else {4});
-            assert!(tasks.iter().all(|t| t["repoIds"] == json!(["team/app"])));
-            let calls = calls.lock().unwrap();
-            assert!(!calls.iter().any(|p| p.contains("/products/2/")));
-            if !mapped {
-                assert_eq!(calls.len(), 1, "No mappings must not request any task lists or details");
-            } else if scope == "mine" {
-                assert!(!calls.iter().any(|p| p.ends_with("/8") || p.ends_with("/10")));
-                assert!(tasks.iter().all(|t| t["assignee"] == "me"));
-            } else {
-                assert!(calls.iter().any(|p| p.ends_with("/8")));
-                assert!(calls.iter().any(|p| p.ends_with("/10")));
+    for sync_kind in [Value::Null, json!("all"), json!("bug"), json!("story"), json!("invalid")] {
+        for scope in ["mine", "products"] {
+            for mapped in [true, false] {
+                calls.lock().unwrap().clear();
+                let config = json!({
+                    "zentao":{"baseUrl":base,"auth":"token","secret":"fixture","account":"alice","scope":scope,"syncKind":sync_kind},
+                    "mappings":if mapped {json!([{"product":"Mapped","repo":"team/app"}])} else {json!([])}
+                });
+                let (tasks, products) = sync(&config).await.unwrap();
+                assert_eq!(products, vec!["Mapped", "Unmapped"]);
+                let kinds = if sync_kind == "bug" || sync_kind == "story" {1} else {2};
+                assert_eq!(tasks.len(), if !mapped {0} else if scope == "mine" {kinds} else {kinds * 2});
+                if kinds == 1 { assert!(tasks.iter().all(|t| t["kind"] == sync_kind)); }
+                assert!(tasks.iter().all(|t| t["repoIds"] == json!(["team/app"])));
+                let calls = calls.lock().unwrap();
+                assert!(!calls.iter().any(|p| p.contains("/products/2/")));
+                if sync_kind == "bug" { assert!(!calls.iter().any(|p| p.contains("/stories"))); }
+                if sync_kind == "story" { assert!(!calls.iter().any(|p| p.contains("/bugs"))); }
+                if !mapped {
+                    assert_eq!(calls.len(), 1, "No mappings must not request any task lists or details");
+                } else if scope == "mine" {
+                    assert!(!calls.iter().any(|p| p.ends_with("/8") || p.ends_with("/10")));
+                    assert!(tasks.iter().all(|t| t["assignee"] == "me"));
+                } else {
+                    assert_eq!(calls.iter().any(|p| p.ends_with("/8")), sync_kind != "story");
+                    assert_eq!(calls.iter().any(|p| p.ends_with("/10")), sync_kind != "bug");
+                }
             }
         }
     }

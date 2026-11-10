@@ -138,6 +138,20 @@ export function ZentaoForm({ value, onChange, test, onTest, onDemo }: { value: Z
           />
         )}
       </Field>
+      <Field label="同步类型" hint="控制从禅道拉取的任务类型，不影响已开始执行或已进入审核的任务。">
+        {() => (
+          <Segmented
+            label="同步类型"
+            value={value.syncKind ?? "all"}
+            onChange={(syncKind) => onChange({ syncKind })}
+            options={[
+              { value: "all", label: "BUG 和需求" },
+              { value: "bug", label: "只同步 BUG" },
+              { value: "story", label: "只同步需求" },
+            ]}
+          />
+        )}
+      </Field>
       <AutoSync value={value.syncIntervalMin ?? 5} onChange={(n) => onChange({ syncIntervalMin: n })} />
       <Field label="同步后自动执行" hint={(value.autoRun ?? true) ? "同步到新任务后会自动交给 Codex，按并发数排队。执行完成后仍要你审核，才会创建 MR。需要先配置该产品的仓库映射。" : "新任务同步进来后保持“待处理”，由你手动交给 Codex。"}>
         {() => <Toggle checked={value.autoRun ?? true} onChange={(v) => onChange({ autoRun: v })} label="同步后自动执行" />}
