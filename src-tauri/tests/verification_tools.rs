@@ -50,6 +50,20 @@ async fn decide(f:&Fixture,id:&str,s:&Value,go:bool) {
     f.rt.call("verificationToolDecide",json!({"id":id,"waitingId":s["waiting"]["id"],"go":go})).await.unwrap();
 }
 #[tokio::test]
+async fn full_access_trials_keep_command_approvals_disabled_and_drafts_read_only() {
+    let mut f = fixture().await;
+    f.config["codex"]["sandbox"] = json!("full-access");
+    f.mapping["projectPrompt"] = json!("no-extra-verification");
+    for mode in ["draft", "trial"] {
+        let id = start(&f, mode, &f.mapping).await;
+        let result = wait(&f, &id, "done").await;
+        assert!(result["waiting"].is_null());
+        if mode == "trial" { assert_eq!(result["result"]["verify"]["verificationRequired"], false); }
+    }
+    f.rt.shutdown().await;
+}
+
+#[tokio::test]
 async fn real_clone_draft_trial_approval_and_cleanup() {
     let f=fixture().await;
     let id=start(&f,"draft",&f.mapping).await;

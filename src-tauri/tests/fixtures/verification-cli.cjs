@@ -10,6 +10,7 @@ readline.createInterface({input: process.stdin}).on('line', line => {
   const r = JSON.parse(line), p = r.params, m = r.method;
   if (m === 'initialize') send({id: r.id, result: {}});
   if (m === 'thread/start') {
+    if (p.sandbox === 'danger-full-access' && p.approvalPolicy !== 'never') throw Error('Full access must not request command approvals');
     if (p.developerInstructions.includes('只在本次独立工作目录中分析或验证仓库') || !p.developerInstructions.includes('访问、登录、部署并验证用户指定的测试环境')) throw Error('Workspace policy blocks remote verification');
     for (const rule of ['Playwright', 'headless: true', 'connectOverCDP', '禁止使用 Computer Use', 'unverified']) {
       if (!p.developerInstructions.includes(rule)) throw Error('Missing isolated headless browser policy: ' + rule);
@@ -25,7 +26,7 @@ readline.createInterface({input: process.stdin}).on('line', line => {
     const readme = fs.readFileSync('repo-1/README.md', 'utf8');
     if (prompt.includes('最终只输出说明正文')) {
       const policy = JSON.parse(fs.readFileSync('session-policy.json'));
-      if (policy.sandbox !== 'read-only') throw Error('Draft not read-only');
+      if (policy.sandbox !== 'read-only' || policy.approvalPolicy !== 'never') throw Error('Draft permissions changed');
       for (const heading of ['## 开发前准备', '## 如何开发', '## 如何验证']) { if (!prompt.includes(heading)) throw Error('Missing project prompt section: ' + heading); }
       finish(id, `## 开发前准备\n1. Read repo-1/README.md.\n\n## 如何开发\n2. Follow repository conventions.\n\n## 如何验证\n3. Run ${readme.trim()} (repo-1/README.md)`);
       return;

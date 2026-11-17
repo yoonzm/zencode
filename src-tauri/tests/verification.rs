@@ -30,6 +30,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   send({id:r.id,result:{data:[{id:p.cursor?'second':'first',model:p.cursor?'second':'first',supportedReasoningEfforts:[{reasoningEffort:'ultra',description:'Deep'}],defaultReasoningEffort:'ultra'}],nextCursor:p.cursor?null:'page2'}});
  }
  if(m==='thread/resume'||m==='thread/start') {
+  if(p.sandbox==='danger-full-access') require('node:fs').writeFileSync('session-params.json',JSON.stringify({method:m,...p}));
   if(p.developerInstructions.includes('只在当前任务工作区实现需求') || !p.developerInstructions.includes('访问、登录、部署并验证用户指定的测试环境')) throw Error('Workspace policy blocks remote verification');
     for (const rule of ['Playwright', 'headless: true', 'connectOverCDP', '禁止使用 Computer Use', 'unverified']) {
       if (!p.developerInstructions.includes(rule)) throw Error('Missing isolated headless browser policy: ' + rule);
@@ -302,13 +303,20 @@ async fn models_follow_all_catalog_pages() {
 async fn project_prompt_reaches_start_resume_and_verification_and_can_skip() {
     for (resume, prompt) in [(false, "project-development-rules"), (true, "no-extra-verification")] {
         let (dir, rt, mut config) = fixture().await;
+        config["codex"]["sandbox"] = json!("full-access");
         config["mappings"][0]["projectPrompt"] = json!(prompt);
         if !resume { rt.data.lock().await["tasks"][0]["run"]["threadId"] = json!(""); }
         rt.call("start", json!({"id":"bug-1","config":config})).await.unwrap();
         let task = wait(&rt,"review").await;
+        let params: Value = serde_json::from_str(&std::fs::read_to_string(dir.path().join("repo/session-params.json")).unwrap()).unwrap();
+        assert_eq!(params["method"], if resume { "thread/resume" } else { "thread/start" });
+        assert_eq!(params["sandbox"], "danger-full-access");
+        assert_eq!(params["approvalPolicy"], "never");
         assert_eq!(task["run"]["verify"]["state"], if resume { "unverified" } else { "passed" });
         let policies = std::fs::read_to_string(dir.path().join("repo/policies.log")).unwrap();
         assert!(policies.contains(prompt));
+        assert!(policies.contains("两个独立的命令调用"));
+        assert!(policies.contains("需求、环境选择或验收标准有歧义时仍须向用户澄清"));
         assert!(policies.contains("不是本次验证环境或登录凭据"));
         assert!(policies.contains("当前用户明确指定的验证环境优先"));
         assert!(policies.contains("项目提示词明确要求保留供人工验证的服务时按要求保留"));
